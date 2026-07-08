@@ -3,10 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "node scripts/deploy.mjs",
-    "deploy:dev": "node scripts/deploy.mjs --env dev",
-    "deploy:prod": "node scripts/deploy.mjs --env prod",
-    "deploy:dry-run": "node scripts/deploy.mjs --env dev --dry-run",
-    "secrets:put": "node scripts/put-secrets.mjs"
+    "typecheck": "tsc --noEmit",
+    "deploy": "bun scripts/deploy.mjs",
+    "deploy:dev": "bun scripts/deploy.mjs --env dev",
+    "deploy:prod": "bun scripts/deploy.mjs --env prod",
+    "deploy:dry-run": "bun scripts/deploy.mjs --env dev --dry-run",
+    "secrets:put": "bun scripts/put-secrets.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260708.1",
+    "typescript": "~5.7.2",
+    "wrangler": "4.108.0"
   }
 }

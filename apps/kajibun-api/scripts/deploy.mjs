@@ -23,7 +23,7 @@ const targetName = env === 'prod' ? 'kajibun' : 'kajibun-dev';
 console.log(`Deploy target: ${targetName}`);
 
 if (!skipBuild) {
-  runCommand('npm', ['run', 'build'], {
+  runCommand('bun', ['run', 'build'], {
     cwd: uiDir,
     env: {
       ...process.env,
@@ -58,7 +58,7 @@ function getOption(values, name) {
 }
 
 function runWrangler(wranglerArgs) {
-  runCommand('npx', ['wrangler@latest', ...wranglerArgs], {
+  runCommand('bunx', ['wrangler', ...wranglerArgs], {
     cwd: apiDir,
   });
 }

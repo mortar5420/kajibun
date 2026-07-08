@@ -1,0 +1,15 @@
+{
+  "name": "kajibun",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "lint": "bun run --cwd apps/kajibun-ui lint",
+    "typecheck": "bun run --cwd apps/kajibun-ui typecheck && bun run --cwd apps/kajibun-api typecheck",
+    "build": "bun run --cwd apps/kajibun-ui build",
+    "deploy:dry-run": "bun run --cwd apps/kajibun-api deploy:dry-run"
+  },
+  "packageManager": "bun@1.2.7"
+}

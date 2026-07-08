@@ -19,6 +19,10 @@ type GoogleIdTokenClaims = {
   picture?: string;
 };
 
+type GoogleJwk = JsonWebKey & {
+  kid?: string;
+};
+
 type SessionPayload = {
   sub: string;
   email: string;
@@ -784,7 +788,7 @@ async function verifyGoogleIdToken(
 
 async function findGoogleJwk(kid: string): Promise<JsonWebKey> {
   const response = await fetch(GOOGLE_JWKS_URL);
-  const json = (await response.json()) as { keys?: JsonWebKey[] };
+  const json = (await response.json()) as { keys?: GoogleJwk[] };
   const jwk = json.keys?.find((key) => key.kid === kid);
 
   if (!jwk) {

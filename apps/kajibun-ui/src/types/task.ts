@@ -1,13 +1,14 @@
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'done';
 
 export interface Task {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   status: TaskStatus;
-  dueDate: string;
-  assignee: string;
+  dueDate: string | null;
+  intervalDays: number;
+  assignee: string | null;
+  assigneeUserId: string | null;
   createdAt: string;
   updatedAt: string;
 }
-

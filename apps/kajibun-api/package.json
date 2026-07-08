@@ -1,0 +1,12 @@
+{
+  "name": "kajibun-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:dev": "node scripts/deploy.mjs --env dev",
+    "deploy:prod": "node scripts/deploy.mjs --env prod",
+    "deploy:dry-run": "node scripts/deploy.mjs --env dev --dry-run",
+    "secrets:put": "node scripts/put-secrets.mjs"
+  }
+}

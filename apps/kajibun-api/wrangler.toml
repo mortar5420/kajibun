@@ -1,0 +1,24 @@
+name = "kajibun"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+workers_dev = true
+
+[assets]
+directory = "../kajibun-ui/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kajibun-prod"
+database_id = "e53a8ed9-5488-47e8-8fef-db6a9060a7ad"
+
+[env.dev]
+name = "kajibun-dev"
+workers_dev = true
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "kajibun-dev"
+database_id = "77a6f173-75db-482e-ab93-f13242ef2baa"

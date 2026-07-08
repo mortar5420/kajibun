@@ -1,0 +1,19 @@
+{
+  "name": "kajibun",
+  "version": "0.0.1",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/kajibun-ui dev",
+    "build": "bun run --cwd apps/kajibun-ui build",
+    "lint": "bun run --cwd apps/kajibun-ui lint",
+    "test": "bun run --cwd apps/kajibun-ui test"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
+

@@ -1,19 +1,22 @@
-import { Task } from '../types/task';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
+import type { Task } from '../types/task';
+import type { User } from '../types/user';
+import { getTasks, reassignTask, updateTaskStatus } from '../lib/api';
 
 interface TaskListProps {
-  tasks: Task[];
+  currentUser: User;
 }
 
 const getStatusColor = (status: Task['status']) => {
   switch (status) {
     case 'todo':
-      return 'bg-blue-500';
-    case 'in_progress':
-      return 'bg-yellow-500';
+      return 'bg-slate-500';
     case 'done':
-      return 'bg-green-500';
+      return 'bg-green-600';
     default:
-      return 'bg-gray-500';
+      return 'bg-slate-500';
   }
 };
 
@@ -21,8 +24,6 @@ const getStatusLabel = (status: Task['status']) => {
   switch (status) {
     case 'todo':
       return '未着手';
-    case 'in_progress':
-      return '進行中';
     case 'done':
       return '完了';
     default:
@@ -30,40 +31,132 @@ const getStatusLabel = (status: Task['status']) => {
   }
 };
 
-export const TaskList = ({ tasks }: TaskListProps) => {
+export const TaskList = ({ currentUser }: TaskListProps) => {
+  const queryClient = useQueryClient();
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const {
+    data: tasks = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: getTasks,
+  });
+  const reassignMutation = useMutation({
+    mutationFn: ({ taskId, assigneeUserId }: { taskId: string; assigneeUserId: string | null }) =>
+      reassignTask(taskId, assigneeUserId),
+    onSuccess: (updatedTask) => {
+      updateTaskCache(queryClient, updatedTask);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+  const statusMutation = useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: Task['status'] }) => updateTaskStatus(taskId, status),
+    onSuccess: (updatedTask) => {
+      updateTaskCache(queryClient, updatedTask);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
+  const currentUserId = String(currentUser.id);
+  const filteredTasks = showOnlyMine ? tasks.filter((task) => task.assigneeUserId === currentUserId) : tasks;
+  const isMutating = reassignMutation.isPending || statusMutation.isPending;
+
+  if (isLoading) {
+    return <StatusMessage>かじ一覧を読み込んでいます。</StatusMessage>;
+  }
+
+  if (isError) {
+    return <StatusMessage>かじ一覧を取得できませんでした。{error instanceof Error ? ` ${error.message}` : ''}</StatusMessage>;
+  }
+
   return (
-    <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h2 className="text-2xl sm:text-3xl font-bold mb-6">今日のタスク</h2>
-      <div className="grid gap-6">
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            className="bg-white rounded-lg shadow-md border border-gray-200 p-4 sm:p-6"
-          >
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-              <h3 className="text-lg sm:text-xl font-medium mb-2 sm:mb-0">
-                {task.title}
-              </h3>
-              <span
-                className={`${getStatusColor(
-                  task.status
-                )} text-white px-3 py-1 rounded-full text-sm`}
-              >
-                {getStatusLabel(task.status)}
-              </span>
-            </div>
-
-            <p className="text-gray-600 text-sm sm:text-base mb-4">
-              {task.description}
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-gray-500 text-sm">
-              <span>担当: {task.assignee}</span>
-              <span>期限: {task.dueDate}</span>
-            </div>
-          </div>
-        ))}
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showOnlyMine}
+            onChange={(event) => setShowOnlyMine(event.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-slate-900"
+          />
+          自担当のみ表示する
+        </label>
+        <button
+          type="button"
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['tasks'] })}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
+        >
+          更新
+        </button>
       </div>
-    </div>
+
+      {filteredTasks.length === 0 ? <StatusMessage>表示するかじがありません。</StatusMessage> : null}
+
+      <div className="grid gap-4">
+        {filteredTasks.map((task) => {
+          const isAssignedToMe = task.assigneeUserId === currentUserId;
+
+          return (
+            <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">{task.title}</h2>
+                  {task.description ? <p className="mt-2 text-sm text-slate-600">{task.description}</p> : null}
+                </div>
+                <span className={`${getStatusColor(task.status)} w-fit rounded-full px-3 py-1 text-sm text-white`}>
+                  {getStatusLabel(task.status)}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                <span>担当: {task.assignee ?? '未設定'}</span>
+                <span>期限: {task.dueDate ?? '未設定'}</span>
+                <span>日数: {task.intervalDays}</span>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {!isAssignedToMe ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      reassignMutation.mutate({
+                        taskId: task.id,
+                        assigneeUserId: currentUserId,
+                      })
+                    }
+                    disabled={isMutating}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm disabled:opacity-60"
+                  >
+                    自分が担当する
+                  </button>
+                ) : null}
+                {isAssignedToMe ? (
+                  <button
+                    type="button"
+                    onClick={() => statusMutation.mutate({ taskId: task.id, status: task.status === 'done' ? 'todo' : 'done' })}
+                    disabled={isMutating}
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
+                  >
+                    {task.status === 'done' ? '未着手に戻す' : '完了にする'}
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 };
+
+function StatusMessage({ children }: { children: ReactNode }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">{children}</div>;
+}
+
+function updateTaskCache(queryClient: ReturnType<typeof useQueryClient>, updatedTask: Task) {
+  queryClient.setQueryData<Task[]>(['tasks'], (currentTasks) =>
+    currentTasks?.map((task) => (task.id === updatedTask.id ? updatedTask : task)),
+  );
+}

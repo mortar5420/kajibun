@@ -1,11 +1,13 @@
 import type { Env } from "../app/env";
+import { createD1Client } from "../adapters/persistence/d1";
 import { clearCookie, parseCookies, serializeCookie, shouldUseSecureCookie } from "../shared/cookies";
 import { randomToken, timingSafeEqualString } from "../shared/crypto";
 import { isAllowedUiOrigin } from "../shared/cors";
 import { jsonError } from "../shared/errors";
 import { GOOGLE_AUTH_URL, exchangeCodeForToken, verifyGoogleIdToken } from "./google-oidc";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createSignedSessionCookie } from "./session";
-import { getCurrentUserOrResponse, getOidcConfig, missingOidcConfigResponse, upsertUser } from "./service";
+import { upsertUser } from "./repository";
+import { getCurrentUserOrResponse, getOidcConfig, missingOidcConfigResponse } from "./service";
 import type { SessionPayload } from "./types";
 
 const STATE_COOKIE = "kajibun_oauth_state";
@@ -108,7 +110,8 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
     return jsonError("forbidden_user", "This Google account is not allowed", 403);
   }
 
-  await upsertUser(env.DB, claims, email);
+  const db = createD1Client(env.DB);
+  await upsertUser(db, claims, email);
 
   const session: SessionPayload = {
     sub: claims.sub,
@@ -146,7 +149,10 @@ export function handleLogout(request: Request): Response {
 }
 
 export async function handleMe(request: Request, env: Env): Promise<Response> {
-  const user = await getCurrentUserOrResponse(request, env);
+  const user = await getCurrentUserOrResponse(request, {
+    db: createD1Client(env.DB),
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (user instanceof Response) {
     return user;
   }

@@ -1,4 +1,5 @@
 import { getCurrentUserOrResponse } from "../auth/service";
+import { createD1Client } from "../adapters/persistence/d1";
 import type { Env } from "../app/env";
 import { readJsonBody } from "../shared/errors";
 import { toTaskResponse } from "./mapper";
@@ -14,12 +15,16 @@ import { parseCreateTaskInput, parseUpdateTaskInput } from "./validation";
 import type { TaskInput, TaskStatus } from "./types";
 
 export async function handleListTasks(request: Request, env: Env): Promise<Response> {
-  const user = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const user = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (user instanceof Response) {
     return user;
   }
 
-  const tasks = await listTaskUseCase(env.DB);
+  const tasks = await listTaskUseCase(db);
 
   return Response.json({
     tasks: tasks.map(toTaskResponse),
@@ -27,14 +32,18 @@ export async function handleListTasks(request: Request, env: Env): Promise<Respo
 }
 
 export async function handleCreateTask(request: Request, env: Env): Promise<Response> {
-  const actor = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (actor instanceof Response) {
     return actor;
   }
 
   const body = await readJsonBody<TaskInput>(request);
   const input = parseCreateTaskInput(body);
-  const task = await createTaskUseCase(env.DB, actor, input);
+  const task = await createTaskUseCase(db, actor, input);
 
   return Response.json(
     {
@@ -47,14 +56,18 @@ export async function handleCreateTask(request: Request, env: Env): Promise<Resp
 }
 
 export async function handleUpdateTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const actor = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (actor instanceof Response) {
     return actor;
   }
 
   const body = await readJsonBody<TaskInput>(request);
   const input = parseUpdateTaskInput(body);
-  const updatedTask = await updateTaskUseCase(env.DB, actor, taskId, input);
+  const updatedTask = await updateTaskUseCase(db, actor, taskId, input);
 
   return Response.json({
     task: toTaskResponse(updatedTask),
@@ -62,12 +75,16 @@ export async function handleUpdateTask(request: Request, env: Env, taskId: numbe
 }
 
 export async function handleDeleteTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const actor = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (actor instanceof Response) {
     return actor;
   }
 
-  await deleteTaskUseCase(env.DB, actor, taskId);
+  await deleteTaskUseCase(db, actor, taskId);
 
   return Response.json({
     ok: true,
@@ -75,12 +92,16 @@ export async function handleDeleteTask(request: Request, env: Env, taskId: numbe
 }
 
 export async function handleReassignTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const actor = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (actor instanceof Response) {
     return actor;
   }
   const body = await readJsonBody<{ assigneeUserId?: number | string | null; assigneeEmail?: string | null }>(request);
-  const updatedTask = await reassignTaskUseCase(env.DB, env.ALLOWED_GOOGLE_EMAILS, actor, taskId, body);
+  const updatedTask = await reassignTaskUseCase(db, env.ALLOWED_GOOGLE_EMAILS, actor, taskId, body);
 
   return Response.json({
     task: toTaskResponse(updatedTask),
@@ -88,12 +109,16 @@ export async function handleReassignTask(request: Request, env: Env, taskId: num
 }
 
 export async function handleCompleteTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const actor = await getCurrentUserOrResponse(request, env);
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
   if (actor instanceof Response) {
     return actor;
   }
   const body = await readJsonBody<{ completed?: boolean; status?: TaskStatus }>(request);
-  const updatedTask = await completeTaskUseCase(env.DB, actor, taskId, body);
+  const updatedTask = await completeTaskUseCase(db, actor, taskId, body);
 
   return Response.json({
     task: toTaskResponse(updatedTask),

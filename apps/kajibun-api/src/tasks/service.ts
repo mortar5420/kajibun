@@ -1,4 +1,5 @@
 import type { CurrentUser } from "../auth/types";
+import type { SqlClient } from "../db/client";
 import { addDaysToDate, getTodayDateString } from "../shared/date";
 import { httpError } from "../shared/errors";
 import { dispatchTaskEvents } from "./event-handlers";
@@ -31,12 +32,12 @@ export type CompleteTaskInput = {
   status?: TaskStatus;
 };
 
-export async function listTaskUseCase(db: D1Database): Promise<TaskRow[]> {
+export async function listTaskUseCase(db: SqlClient): Promise<TaskRow[]> {
   return listTasks(db);
 }
 
 export async function createTaskUseCase(
-  db: D1Database,
+  db: SqlClient,
   actor: CurrentUser,
   input: Required<TaskDetailsInput>,
 ): Promise<TaskRow> {
@@ -59,7 +60,7 @@ export async function createTaskUseCase(
 }
 
 export async function updateTaskUseCase(
-  db: D1Database,
+  db: SqlClient,
   actor: CurrentUser,
   taskId: number,
   input: TaskDetailsInput,
@@ -93,7 +94,7 @@ export async function updateTaskUseCase(
   return getExistingTask(db, taskId);
 }
 
-export async function deleteTaskUseCase(db: D1Database, actor: CurrentUser, taskId: number): Promise<void> {
+export async function deleteTaskUseCase(db: SqlClient, actor: CurrentUser, taskId: number): Promise<void> {
   const task = await getExistingTask(db, taskId);
 
   await dispatchTaskEvents(db, [
@@ -116,7 +117,7 @@ export async function deleteTaskUseCase(db: D1Database, actor: CurrentUser, task
 }
 
 export async function reassignTaskUseCase(
-  db: D1Database,
+  db: SqlClient,
   allowedEmailsConfig: string | undefined,
   actor: CurrentUser,
   taskId: number,
@@ -142,7 +143,7 @@ export async function reassignTaskUseCase(
 }
 
 export async function completeTaskUseCase(
-  db: D1Database,
+  db: SqlClient,
   actor: CurrentUser,
   taskId: number,
   input: CompleteTaskInput,
@@ -178,7 +179,7 @@ export async function completeTaskUseCase(
   return getExistingTask(db, taskId);
 }
 
-async function getExistingTask(db: D1Database, taskId: number): Promise<TaskRow> {
+async function getExistingTask(db: SqlClient, taskId: number): Promise<TaskRow> {
   const task = await findTask(db, taskId);
   if (!task) {
     throw httpError("task_not_found", "Task not found", 404);

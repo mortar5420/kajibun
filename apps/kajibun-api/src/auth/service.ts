@@ -1,8 +1,10 @@
 import type { Env } from "../app/env";
+import type { SqlClient } from "../db/client";
 import { parseCookies } from "../shared/cookies";
 import { jsonError } from "../shared/errors";
+import { findUserByGoogleSub } from "./repository";
 import { SESSION_COOKIE, verifySignedSessionCookie } from "./session";
-import type { CurrentUser, GoogleIdTokenClaims, OidcConfig } from "./types";
+import type { CurrentUser, OidcConfig } from "./types";
 
 export function getOidcConfig(env: Env): OidcConfig | null {
   const allowedEmails = parseAllowedEmails(env.ALLOWED_GOOGLE_EMAILS);
@@ -32,32 +34,29 @@ export function missingOidcConfigResponse(): Response {
   );
 }
 
-export async function getCurrentUserOrResponse(request: Request, env: Env): Promise<CurrentUser | Response> {
+export async function getCurrentUserOrResponse(
+  request: Request,
+  options: {
+    db: SqlClient;
+    sessionSecret?: string;
+  },
+): Promise<CurrentUser | Response> {
   const cookies = parseCookies(request.headers.get("Cookie"));
   const sessionCookie = cookies[SESSION_COOKIE];
   if (!sessionCookie) {
     return jsonError("unauthorized", "Not logged in", 401);
   }
 
-  if (!env.SESSION_SECRET) {
+  if (!options.sessionSecret) {
     return jsonError("missing_config", "SESSION_SECRET is not configured", 500);
   }
 
-  const session = await verifySignedSessionCookie(sessionCookie, env.SESSION_SECRET);
+  const session = await verifySignedSessionCookie(sessionCookie, options.sessionSecret);
   if (!session) {
     return jsonError("unauthorized", "Invalid session", 401);
   }
 
-  const user = await env.DB.prepare(
-    `
-    SELECT id, google_sub, email, display_name
-    FROM users
-    WHERE google_sub = ?
-    `,
-  )
-    .bind(session.sub)
-    .first<{ id: number; google_sub: string; email: string; display_name: string | null }>();
-
+  const user = await findUserByGoogleSub(options.db, session.sub);
   if (!user) {
     return jsonError("unauthorized", "User not found", 401);
   }
@@ -68,24 +67,6 @@ export async function getCurrentUserOrResponse(request: Request, env: Env): Prom
     email: user.email,
     name: user.display_name ?? undefined,
   };
-}
-
-export async function upsertUser(db: D1Database, claims: GoogleIdTokenClaims, email: string): Promise<void> {
-  await db
-    .prepare(
-      `
-      INSERT INTO users (google_sub, email, display_name, picture_url, created_at, updated_at, last_login_at)
-      VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))
-      ON CONFLICT(google_sub) DO UPDATE SET
-        email = excluded.email,
-        display_name = excluded.display_name,
-        picture_url = excluded.picture_url,
-        updated_at = datetime('now'),
-        last_login_at = datetime('now')
-      `,
-    )
-    .bind(claims.sub, email, claims.name ?? null, claims.picture ?? null)
-    .run();
 }
 
 export function parseAllowedEmails(value?: string): Set<string> {

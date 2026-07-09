@@ -1,7 +1,8 @@
+import type { SqlClient } from "../db/client";
 import { recordTaskEvent } from "./repository";
 import type { TaskDomainEvent } from "./events";
 
-export async function dispatchTaskEvents(db: D1Database, events: TaskDomainEvent[]): Promise<void> {
+export async function dispatchTaskEvents(db: SqlClient, events: TaskDomainEvent[]): Promise<void> {
   for (const event of events) {
     await recordTaskEvent(db, {
       taskId: event.taskId,

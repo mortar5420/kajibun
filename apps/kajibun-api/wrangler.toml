@@ -18,6 +18,10 @@ database_name = "kajibun-prod"
 database_id = "e53a8ed9-5488-47e8-8fef-db6a9060a7ad"
 migrations_dir = "src/db/migrations"
 
+[[r2_buckets]]
+binding = "AVATARS"
+bucket_name = "kajibun-avatars-prod"
+
 [env.dev]
 name = "kajibun-dev"
 workers_dev = true
@@ -30,3 +34,7 @@ binding = "DB"
 database_name = "kajibun-dev"
 database_id = "77a6f173-75db-482e-ab93-f13242ef2baa"
 migrations_dir = "src/db/migrations"
+
+[[env.dev.r2_buckets]]
+binding = "AVATARS"
+bucket_name = "kajibun-avatars-dev"

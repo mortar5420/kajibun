@@ -1,12 +1,15 @@
 import type { Env } from "../app/env";
 import { createD1Client } from "../adapters/persistence/d1";
+import { createR2ObjectStorage } from "../adapters/storage/r2";
 import { clearCookie, parseCookies, serializeCookie, shouldUseSecureCookie } from "../shared/cookies";
 import { randomToken, timingSafeEqualString } from "../shared/crypto";
 import { isAllowedUiOrigin } from "../shared/cors";
 import { httpError, jsonError, readJsonBody } from "../shared/errors";
+import { avatarResponse, getUserPictureUrl, parseAvatarUpload, storeAvatar } from "./avatar";
 import { GOOGLE_AUTH_URL, exchangeCodeForToken, verifyGoogleIdToken } from "./google-oidc";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createSignedSessionCookie } from "./session";
-import { updateUserProfile, upsertUser } from "./repository";
+import { clearUserAvatar, findUserById, updateUserAvatar, updateUserProfile, upsertUser } from "./repository";
+import type { UserRecord } from "./repository";
 import { getCurrentUserOrResponse } from "./http";
 import { getOidcConfig } from "./service";
 import type { SessionPayload } from "./types";
@@ -179,53 +182,126 @@ export async function handleUpdateMe(request: Request, env: Env): Promise<Respon
     return user;
   }
 
-  const input = parseProfileInput(await readJsonBody<{ name?: unknown; pictureUrl?: unknown }>(request));
+  const input = parseProfileInput(await readJsonBody<{ name?: unknown }>(request));
   const updatedUser = await updateUserProfile(db, user.id, input);
   if (!updatedUser) {
     throw httpError("user_not_found", "User not found", 404);
   }
 
   return Response.json({
-    user: {
-      id: updatedUser.id,
-      sub: updatedUser.google_sub,
-      email: updatedUser.email,
-      name: updatedUser.display_name ?? undefined,
-      pictureUrl: updatedUser.picture_url ?? undefined,
-    },
+    user: toUserResponse(updatedUser),
   });
 }
 
-function parseProfileInput(input: { name?: unknown; pictureUrl?: unknown }): {
+export async function handleUploadMeAvatar(request: Request, env: Env): Promise<Response> {
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
+  if (actor instanceof Response) {
+    return actor;
+  }
+
+  const currentUser = await findUserById(db, actor.id);
+  if (!currentUser) {
+    throw httpError("user_not_found", "User not found", 404);
+  }
+
+  const upload = await parseAvatarUpload(await request.formData(), actor);
+  const storage = createR2ObjectStorage(env.AVATARS);
+  await storeAvatar(storage, upload);
+
+  const updatedUser = await updateUserAvatar(db, actor.id, {
+    objectKey: upload.objectKey,
+    contentType: upload.contentType,
+  });
+  if (!updatedUser) {
+    await storage.delete(upload.objectKey);
+    throw httpError("user_not_found", "User not found", 404);
+  }
+  if (currentUser.avatar_object_key && currentUser.avatar_object_key !== upload.objectKey) {
+    await storage.delete(currentUser.avatar_object_key);
+  }
+
+  return Response.json({
+    user: toUserResponse(updatedUser),
+  });
+}
+
+export async function handleDeleteMeAvatar(request: Request, env: Env): Promise<Response> {
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
+  if (actor instanceof Response) {
+    return actor;
+  }
+
+  const currentUser = await findUserById(db, actor.id);
+  if (!currentUser) {
+    throw httpError("user_not_found", "User not found", 404);
+  }
+
+  const updatedUser = await clearUserAvatar(db, actor.id);
+  if (currentUser.avatar_object_key) {
+    await createR2ObjectStorage(env.AVATARS).delete(currentUser.avatar_object_key);
+  }
+
+  return Response.json({
+    user: updatedUser ? toUserResponse(updatedUser) : null,
+  });
+}
+
+export async function handleGetUserAvatar(request: Request, env: Env, userId: number): Promise<Response> {
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
+  if (actor instanceof Response) {
+    return actor;
+  }
+
+  const user = await findUserById(db, userId);
+  if (!user) {
+    throw httpError("user_not_found", "User not found", 404);
+  }
+
+  return avatarResponse(createR2ObjectStorage(env.AVATARS), user);
+}
+
+function parseProfileInput(input: { name?: unknown }): {
   displayName: string | null;
-  pictureUrl: string | null;
 } {
   if (input.name !== undefined && typeof input.name !== "string") {
     throw httpError("invalid_profile", "name must be a string", 400);
   }
-  if (input.pictureUrl !== undefined && typeof input.pictureUrl !== "string") {
-    throw httpError("invalid_profile", "pictureUrl must be a string", 400);
-  }
 
   const displayName = input.name?.trim() || null;
-  const pictureUrl = input.pictureUrl?.trim() || null;
   if (displayName && displayName.length > 80) {
     throw httpError("invalid_profile", "name must be 80 characters or fewer", 400);
-  }
-  if (pictureUrl) {
-    try {
-      const url = new URL(pictureUrl);
-      if (url.protocol !== "https:") {
-        throw new Error("invalid protocol");
-      }
-    } catch {
-      throw httpError("invalid_profile", "pictureUrl must be an HTTPS URL", 400);
-    }
   }
 
   return {
     displayName,
-    pictureUrl,
+  };
+}
+
+function toUserResponse(user: UserRecord): {
+  id: number;
+  sub: string;
+  email: string;
+  name: string | undefined;
+  pictureUrl: string | undefined;
+} {
+  return {
+    id: user.id,
+    sub: user.google_sub,
+    email: user.email,
+    name: user.display_name ?? undefined,
+    pictureUrl: getUserPictureUrl(user),
   };
 }
 

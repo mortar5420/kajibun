@@ -1,6 +1,7 @@
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  AVATARS: R2Bucket;
   GOOGLE_OIDC_CLIENT_ID?: string;
   GOOGLE_OIDC_CLIENT_SECRET?: string;
   SESSION_SECRET?: string;

@@ -2,6 +2,7 @@ import type { Env } from "../app/env";
 import type { SqlClient } from "../db/client";
 import { parseAllowedEmails } from "./policy";
 import { findUserByGoogleSub } from "./repository";
+import { getUserPictureUrl } from "./avatar";
 import { verifySignedSessionCookie } from "./session";
 import type { CurrentUser, OidcConfig } from "./types";
 
@@ -94,7 +95,7 @@ export async function getCurrentUser(
       googleSub: user.google_sub,
       email: user.email,
       name: user.display_name ?? undefined,
-      pictureUrl: user.picture_url ?? undefined,
+      pictureUrl: getUserPictureUrl(user),
     },
   };
 }

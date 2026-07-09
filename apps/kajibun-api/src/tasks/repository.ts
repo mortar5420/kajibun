@@ -45,6 +45,8 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
           users.email AS assignee_email,
           users.display_name AS assignee_name,
           users.picture_url AS assignee_picture_url,
+          users.avatar_object_key AS assignee_avatar_object_key,
+          users.avatar_updated_at AS assignee_avatar_updated_at,
           tasks.created_at,
           tasks.updated_at
         FROM tasks
@@ -74,6 +76,8 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
           users.email AS assignee_email,
           users.display_name AS assignee_name,
           users.picture_url AS assignee_picture_url,
+          users.avatar_object_key AS assignee_avatar_object_key,
+          users.avatar_updated_at AS assignee_avatar_updated_at,
           tasks.created_at,
           tasks.updated_at
         FROM tasks

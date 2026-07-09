@@ -11,6 +11,8 @@ export type TaskRow = {
   assignee_email: string | null;
   assignee_name: string | null;
   assignee_picture_url: string | null;
+  assignee_avatar_object_key: string | null;
+  assignee_avatar_updated_at: string | null;
   created_at: string;
   updated_at: string;
 };

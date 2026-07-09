@@ -1,3 +1,4 @@
+import { getUserPictureUrl } from "../auth/avatar";
 import type { Task } from "./domain";
 import type { TaskResponse, TaskRow } from "./types";
 
@@ -12,7 +13,15 @@ export function toTask(row: TaskRow): Task {
     assigneeUserId: row.assignee_user_id,
     assigneeEmail: row.assignee_email,
     assigneeName: row.assignee_name,
-    assigneePictureUrl: row.assignee_picture_url,
+    assigneePictureUrl:
+      row.assignee_user_id === null
+        ? null
+        : (getUserPictureUrl({
+            id: row.assignee_user_id,
+            picture_url: row.assignee_picture_url,
+            avatar_object_key: row.assignee_avatar_object_key,
+            avatar_updated_at: row.assignee_avatar_updated_at,
+          }) ?? null),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

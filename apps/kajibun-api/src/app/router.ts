@@ -1,4 +1,15 @@
-import { handleCallback, handleLogin, handleLogout, handleMe, handleUpdateMe, isCallbackPath, isLoginPath } from "../auth/routes";
+import {
+  handleCallback,
+  handleDeleteMeAvatar,
+  handleGetUserAvatar,
+  handleLogin,
+  handleLogout,
+  handleMe,
+  handleUpdateMe,
+  handleUploadMeAvatar,
+  isCallbackPath,
+  isLoginPath,
+} from "../auth/routes";
 import { handleGetVapidPublicKey, handleSendTestPush, handleSubscribePush } from "../notifications/routes";
 import {
   handleCompleteTask,
@@ -43,6 +54,19 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
   if (request.method === "PATCH" && apiPath === "/me") {
     return handleUpdateMe(request, env);
+  }
+
+  if (request.method === "POST" && apiPath === "/me/avatar") {
+    return handleUploadMeAvatar(request, env);
+  }
+
+  if (request.method === "DELETE" && apiPath === "/me/avatar") {
+    return handleDeleteMeAvatar(request, env);
+  }
+
+  const userAvatarMatch = apiPath.match(/^\/users\/(\d+)\/avatar$/);
+  if (request.method === "GET" && userAvatarMatch) {
+    return handleGetUserAvatar(request, env, Number(userAvatarMatch[1]));
   }
 
   if (request.method === "GET" && apiPath === "/push/vapid-public-key") {
@@ -111,6 +135,7 @@ function getApiPath(pathname: string): string | null {
     pathname === "/me" ||
     pathname === "/tasks" ||
     pathname.startsWith("/auth/") ||
+    pathname.startsWith("/users/") ||
     pathname.startsWith("/push/") ||
     pathname === "/push-subscriptions" ||
     pathname.startsWith("/tasks/")

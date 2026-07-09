@@ -35,7 +35,6 @@ type VapidPublicKeyResponse = {
 
 export type UserProfileInput = {
   name: string;
-  pictureUrl: string;
 };
 
 type UserResponse = Omit<User, 'id'> & {
@@ -51,7 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     credentials: 'include',
     headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
   });
@@ -110,6 +109,34 @@ export async function updateCurrentUserProfile(input: UserProfileInput): Promise
     ...data.user,
     id: String(data.user.id),
   };
+}
+
+export async function uploadCurrentUserAvatar(file: File): Promise<User> {
+  const formData = new FormData();
+  formData.set('avatar', file);
+
+  const data = await request<{ user: UserResponse }>('/me/avatar', {
+    method: 'POST',
+    body: formData,
+  });
+
+  return {
+    ...data.user,
+    id: String(data.user.id),
+  };
+}
+
+export async function deleteCurrentUserAvatar(): Promise<User | null> {
+  const data = await request<{ user: UserResponse | null }>('/me/avatar', {
+    method: 'DELETE',
+  });
+
+  return data.user
+    ? {
+        ...data.user,
+        id: String(data.user.id),
+      }
+    : null;
 }
 
 export async function getTasks(): Promise<Task[]> {

@@ -6,7 +6,7 @@ import '@mantine/core/styles.css';
 import { PushNotificationButton } from './components/PushNotificationButton';
 import { TaskAdmin } from './components/TaskAdmin';
 import { TaskList } from './components/TaskList';
-import { getCurrentUser, getLoginUrl, logout, updateCurrentUserProfile } from './lib/api';
+import { deleteCurrentUserAvatar, getCurrentUser, getLoginUrl, logout, updateCurrentUserProfile, uploadCurrentUserAvatar } from './lib/api';
 import type { UserProfileInput } from './lib/api';
 import { queryClient } from './lib/queryClient';
 import type { User } from './types/user';
@@ -19,8 +19,10 @@ function AppContent() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [profileForm, setProfileForm] = useState<UserProfileInput>({
     name: '',
-    pictureUrl: '',
   });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [shouldDeleteAvatar, setShouldDeleteAvatar] = useState(false);
   const {
     data: currentUser,
     isLoading,
@@ -38,19 +40,30 @@ function AppContent() {
     },
   });
   const profileMutation = useMutation({
-    mutationFn: updateCurrentUserProfile,
+    mutationFn: async (input: UserProfileInput) => {
+      let user = await updateCurrentUserProfile(input);
+      if (shouldDeleteAvatar) {
+        user = (await deleteCurrentUserAvatar()) ?? user;
+      }
+      if (avatarFile) {
+        user = await uploadCurrentUserAvatar(avatarFile);
+      }
+
+      return user;
+    },
     onSuccess: (updatedUser) => {
       queryClient.setQueryData(['currentUser'], updatedUser);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setIsProfileDialogOpen(false);
+      clearAvatarSelection();
     },
   });
 
   function openProfileDialog(user: User) {
     setProfileForm({
       name: user.name ?? '',
-      pictureUrl: user.pictureUrl ?? '',
     });
+    clearAvatarSelection();
     profileMutation.reset();
     setIsProfileDialogOpen(true);
   }
@@ -58,6 +71,31 @@ function AppContent() {
   function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     profileMutation.mutate(profileForm);
+  }
+
+  function handleAvatarFileChange(file: File | null) {
+    clearAvatarSelection();
+    if (!file) {
+      return;
+    }
+
+    setAvatarFile(file);
+    setShouldDeleteAvatar(false);
+    setAvatarPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function clearAvatarSelection() {
+    if (avatarPreviewUrl) {
+      URL.revokeObjectURL(avatarPreviewUrl);
+    }
+    setAvatarFile(null);
+    setAvatarPreviewUrl(null);
+    setShouldDeleteAvatar(false);
+  }
+
+  function closeProfileDialog() {
+    setIsProfileDialogOpen(false);
+    clearAvatarSelection();
   }
 
   return (
@@ -100,7 +138,7 @@ function AppContent() {
         </header>
 
         {currentUser ? (
-          <Modal opened={isProfileDialogOpen} onClose={() => setIsProfileDialogOpen(false)} title="プロフィール" centered>
+          <Modal opened={isProfileDialogOpen} onClose={closeProfileDialog} title="プロフィール" centered>
             <form onSubmit={handleProfileSubmit}>
               <div className="grid gap-4">
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -112,21 +150,38 @@ function AppContent() {
                   />
                 </label>
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  アイコンURL
+                  アイコン画像
                   <input
-                    type="url"
-                    value={profileForm.pictureUrl}
-                    onChange={(event) => setProfileForm((current) => ({ ...current, pictureUrl: event.target.value }))}
-                    placeholder="https://example.com/icon.png"
-                    className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => handleAvatarFileChange(event.target.files?.[0] ?? null)}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-normal text-slate-900"
                   />
                 </label>
-                {profileForm.pictureUrl ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3">
                   <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <UserAvatar user={{ ...currentUser, pictureUrl: profileForm.pictureUrl, name: profileForm.name }} />
-                    <span>プレビュー</span>
+                    <UserAvatar
+                      user={{
+                        ...currentUser,
+                        pictureUrl: shouldDeleteAvatar ? undefined : (avatarPreviewUrl ?? currentUser.pictureUrl),
+                        name: profileForm.name,
+                      }}
+                    />
+                    <span>{avatarFile ? avatarFile.name : shouldDeleteAvatar ? 'アイコンを削除します' : '現在のアイコン'}</span>
                   </div>
-                ) : null}
+                  {currentUser.pictureUrl || avatarFile ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearAvatarSelection();
+                        setShouldDeleteAvatar(true);
+                      }}
+                      className="text-sm font-medium text-red-600"
+                    >
+                      削除
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="mt-5 flex gap-2">
                 <button
@@ -138,7 +193,7 @@ function AppContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsProfileDialogOpen(false)}
+                  onClick={closeProfileDialog}
                   className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm"
                 >
                   キャンセル

@@ -140,7 +140,6 @@ export async function handleCompleteTask(request: Request, env: Env, taskId: num
         handleTaskNotificationEvent(event, {
           notificationRepository,
           pushSender,
-          allowedEmailsConfig: env.ALLOWED_GOOGLE_EMAILS,
         }),
     ],
   });

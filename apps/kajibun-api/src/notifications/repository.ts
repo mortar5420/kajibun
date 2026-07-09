@@ -36,6 +36,7 @@ export interface NotificationRepository {
     userAgent: string | null;
   }): Promise<void>;
   findUsersByEmails(emails: string[]): Promise<NotificationRecipient[]>;
+  listUsersWithActiveSubscriptionsExcept(userId: number): Promise<NotificationRecipient[]>;
   listActiveSubscriptionsByUserId(userId: number): Promise<PushSubscriptionRecord[]>;
   revokeSubscription(subscriptionId: number): Promise<void>;
   createJob(input: {
@@ -87,6 +88,19 @@ export function createSqlNotificationRepository(db: SqlClient): NotificationRepo
       );
     },
 
+    async listUsersWithActiveSubscriptionsExcept(userId: number): Promise<NotificationRecipient[]> {
+      return db.all<NotificationRecipient>(
+        `
+        SELECT DISTINCT users.id, users.email
+        FROM users
+        INNER JOIN push_subscriptions ON push_subscriptions.user_id = users.id
+        WHERE users.id <> ? AND push_subscriptions.revoked_at IS NULL
+        ORDER BY users.id ASC
+        `,
+        [userId],
+      );
+    },
+
     async listActiveSubscriptionsByUserId(userId: number): Promise<PushSubscriptionRecord[]> {
       const rows = await db.all<PushSubscriptionRow>(
         `
@@ -126,7 +140,27 @@ export function createSqlNotificationRepository(db: SqlClient): NotificationRepo
           updated_at
         )
         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
-        ON CONFLICT(dedupe_key) DO NOTHING
+        ON CONFLICT(dedupe_key) DO UPDATE SET
+          payload_json = CASE
+            WHEN notification_jobs.status = 'failed' THEN excluded.payload_json
+            ELSE notification_jobs.payload_json
+          END,
+          status = CASE
+            WHEN notification_jobs.status = 'failed' THEN 'pending'
+            ELSE notification_jobs.status
+          END,
+          attempts = CASE
+            WHEN notification_jobs.status = 'failed' THEN 0
+            ELSE notification_jobs.attempts
+          END,
+          last_error = CASE
+            WHEN notification_jobs.status = 'failed' THEN NULL
+            ELSE notification_jobs.last_error
+          END,
+          updated_at = CASE
+            WHEN notification_jobs.status = 'failed' THEN datetime('now')
+            ELSE notification_jobs.updated_at
+          END
         `,
         [input.type, input.recipientUserId, input.taskId, input.dedupeKey, JSON.stringify(input.payload)],
       );

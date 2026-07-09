@@ -1,3 +1,5 @@
+import { Hono } from "hono";
+import type { Context, Handler } from "hono";
 import {
   handleCallback,
   handleDeleteMeAvatar,
@@ -7,9 +9,9 @@ import {
   handleMe,
   handleUpdateMe,
   handleUploadMeAvatar,
-  isCallbackPath,
-  isLoginPath,
 } from "../auth/routes";
+import { corsPreflightResponse, withCors } from "../shared/cors";
+import { isHttpError, jsonError } from "../shared/errors";
 import { handleGetVapidPublicKey, handleSendTestPush, handleSubscribePush } from "../notifications/routes";
 import {
   handleCompleteTask,
@@ -21,95 +23,115 @@ import {
 } from "../tasks/routes";
 import type { Env } from "./env";
 
+type HonoContext = {
+  Bindings: Env;
+};
+
+const app = new Hono<HonoContext>();
+
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS") {
+    return corsPreflightResponse(c.req.raw);
+  }
+
+  await next();
+
+  return withCors(c.req.raw, c.res);
+});
+
+app.onError((error, c) => {
+  if (isHttpError(error)) {
+    return withCors(c.req.raw, jsonError(error.code, error.message, error.status));
+  }
+
+  console.error(error);
+  return withCors(c.req.raw, jsonError("internal_error", "Internal server error", 500));
+});
+
+register("get", "/health", () =>
+  Response.json({
+    ok: true,
+    service: "kajibun-api",
+  }),
+);
+
+register("get", "/auth/login", handleLogin);
+register("get", "/auth/google/login", handleLogin);
+register("get", "/auth/callback", handleCallback);
+register("get", "/auth/google/callback", handleCallback);
+register("post", "/auth/logout", handleLogout);
+
+register("get", "/me", handleMe);
+register("patch", "/me", handleUpdateMe);
+register("post", "/me/avatar", handleUploadMeAvatar);
+register("delete", "/me/avatar", handleDeleteMeAvatar);
+
+register("get", "/users/:userId/avatar", (request, env, params) =>
+  handleGetUserAvatar(request, env, Number(params.userId)),
+);
+
+register("get", "/push/vapid-public-key", (_request, env) => handleGetVapidPublicKey(env));
+register("post", "/push-subscriptions", handleSubscribePush);
+register("post", "/push/test", handleSendTestPush);
+
+register("get", "/tasks", handleListTasks);
+register("post", "/tasks", handleCreateTask);
+register("patch", "/tasks/:taskId", (request, env, params) => handleUpdateTask(request, env, Number(params.taskId)));
+register("delete", "/tasks/:taskId", (request, env, params) => handleDeleteTask(request, env, Number(params.taskId)));
+register("patch", "/tasks/:taskId/assignee", (request, env, params) =>
+  handleReassignTask(request, env, Number(params.taskId)),
+);
+register("patch", "/tasks/:taskId/complete", (request, env, params) =>
+  handleCompleteTask(request, env, Number(params.taskId)),
+);
+
+app.get("/api", (c) => defaultApiResponse(c.env));
+app.all("/api/*", (c) => defaultApiResponse(c.env));
+
+app.notFound((c) => {
+  if (isApiPath(new URL(c.req.url).pathname)) {
+    return defaultApiResponse(c.env);
+  }
+
+  return c.env.ASSETS.fetch(c.req.raw);
+});
+
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const apiPath = getApiPath(url.pathname);
+  return app.fetch(request, env);
+}
 
-  if (!apiPath) {
-    return env.ASSETS.fetch(request);
+type Method = "get" | "post" | "patch" | "delete";
+
+type RouteHandler = (
+  request: Request,
+  env: Env,
+  params: Record<string, string>,
+) => Response | Promise<Response>;
+
+function register(method: Method, path: string, handler: RouteHandler): void {
+  const honoHandler: Handler<HonoContext> = (c: Context<HonoContext>) => handler(c.req.raw, c.env, c.req.param());
+
+  switch (method) {
+    case "get":
+      app.get(path, honoHandler);
+      app.get(`/api${path}`, honoHandler);
+      break;
+    case "post":
+      app.post(path, honoHandler);
+      app.post(`/api${path}`, honoHandler);
+      break;
+    case "patch":
+      app.patch(path, honoHandler);
+      app.patch(`/api${path}`, honoHandler);
+      break;
+    case "delete":
+      app.delete(path, honoHandler);
+      app.delete(`/api${path}`, honoHandler);
+      break;
   }
+}
 
-  if (apiPath === "/health") {
-    return Response.json({
-      ok: true,
-      service: "kajibun-api",
-    });
-  }
-
-  if (request.method === "GET" && isLoginPath(apiPath)) {
-    return handleLogin(request, env);
-  }
-
-  if (request.method === "GET" && isCallbackPath(apiPath)) {
-    return handleCallback(request, env);
-  }
-
-  if (request.method === "POST" && apiPath === "/auth/logout") {
-    return handleLogout(request);
-  }
-
-  if (request.method === "GET" && apiPath === "/me") {
-    return handleMe(request, env);
-  }
-
-  if (request.method === "PATCH" && apiPath === "/me") {
-    return handleUpdateMe(request, env);
-  }
-
-  if (request.method === "POST" && apiPath === "/me/avatar") {
-    return handleUploadMeAvatar(request, env);
-  }
-
-  if (request.method === "DELETE" && apiPath === "/me/avatar") {
-    return handleDeleteMeAvatar(request, env);
-  }
-
-  const userAvatarMatch = apiPath.match(/^\/users\/(\d+)\/avatar$/);
-  if (request.method === "GET" && userAvatarMatch) {
-    return handleGetUserAvatar(request, env, Number(userAvatarMatch[1]));
-  }
-
-  if (request.method === "GET" && apiPath === "/push/vapid-public-key") {
-    return handleGetVapidPublicKey(env);
-  }
-
-  if (request.method === "POST" && apiPath === "/push-subscriptions") {
-    return handleSubscribePush(request, env);
-  }
-
-  if (request.method === "POST" && apiPath === "/push/test") {
-    return handleSendTestPush(request, env);
-  }
-
-  if (request.method === "GET" && apiPath === "/tasks") {
-    return handleListTasks(request, env);
-  }
-
-  if (request.method === "POST" && apiPath === "/tasks") {
-    return handleCreateTask(request, env);
-  }
-
-  const taskMatch = apiPath.match(/^\/tasks\/(\d+)$/);
-  if (taskMatch) {
-    if (request.method === "PATCH") {
-      return handleUpdateTask(request, env, Number(taskMatch[1]));
-    }
-
-    if (request.method === "DELETE") {
-      return handleDeleteTask(request, env, Number(taskMatch[1]));
-    }
-  }
-
-  const assigneeMatch = apiPath.match(/^\/tasks\/(\d+)\/assignee$/);
-  if (request.method === "PATCH" && assigneeMatch) {
-    return handleReassignTask(request, env, Number(assigneeMatch[1]));
-  }
-
-  const completeMatch = apiPath.match(/^\/tasks\/(\d+)\/complete$/);
-  if (request.method === "PATCH" && completeMatch) {
-    return handleCompleteTask(request, env, Number(completeMatch[1]));
-  }
-
+function defaultApiResponse(env: Env): Response {
   return Response.json({
     name: "kajibun-api",
     status: "ok",
@@ -121,16 +143,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   });
 }
 
-function getApiPath(pathname: string): string | null {
-  if (pathname === "/api") {
-    return "/";
-  }
-
-  if (pathname.startsWith("/api/")) {
-    return pathname.slice("/api".length);
-  }
-
-  if (
+function isApiPath(pathname: string): boolean {
+  return (
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
     pathname === "/health" ||
     pathname === "/me" ||
     pathname === "/tasks" ||
@@ -139,9 +155,5 @@ function getApiPath(pathname: string): string | null {
     pathname.startsWith("/push/") ||
     pathname === "/push-subscriptions" ||
     pathname.startsWith("/tasks/")
-  ) {
-    return pathname;
-  }
-
-  return null;
+  );
 }

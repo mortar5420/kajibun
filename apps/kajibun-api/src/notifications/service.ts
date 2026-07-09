@@ -32,7 +32,6 @@ export async function handleTaskNotificationEvent(
   options: {
     notificationRepository: NotificationRepository;
     pushSender: PushSender;
-    allowedEmailsConfig?: string;
   },
 ): Promise<void> {
   if (event.type !== "TaskCompleted") {
@@ -138,11 +137,9 @@ async function enqueueAndSendTaskCompletedNotifications(
   options: {
     notificationRepository: NotificationRepository;
     pushSender: PushSender;
-    allowedEmailsConfig?: string;
   },
 ): Promise<void> {
-  const recipientEmails = Array.from(parseAllowedEmails(options.allowedEmailsConfig));
-  const recipients = await options.notificationRepository.findUsersByEmails(recipientEmails);
+  const recipients = await options.notificationRepository.listUsersWithActiveSubscriptionsExcept(event.actorUserId);
   const payload: NotificationPayload = {
     title: "家事が完了しました",
     body: "担当の家事が完了しました。",

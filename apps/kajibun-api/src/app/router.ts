@@ -1,4 +1,4 @@
-import { handleCallback, handleLogin, handleLogout, handleMe, isCallbackPath, isLoginPath } from "../auth/routes";
+import { handleCallback, handleLogin, handleLogout, handleMe, handleUpdateMe, isCallbackPath, isLoginPath } from "../auth/routes";
 import { handleGetVapidPublicKey, handleSendTestPush, handleSubscribePush } from "../notifications/routes";
 import {
   handleCompleteTask,
@@ -39,6 +39,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
   if (request.method === "GET" && apiPath === "/me") {
     return handleMe(request, env);
+  }
+
+  if (request.method === "PATCH" && apiPath === "/me") {
+    return handleUpdateMe(request, env);
   }
 
   if (request.method === "GET" && apiPath === "/push/vapid-public-key") {

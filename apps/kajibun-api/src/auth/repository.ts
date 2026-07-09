@@ -6,16 +6,44 @@ export type UserRecord = {
   google_sub: string;
   email: string;
   display_name: string | null;
+  picture_url: string | null;
 };
 
 export async function findUserByGoogleSub(db: SqlClient, googleSub: string): Promise<UserRecord | null> {
   return db.first<UserRecord>(
     `
-    SELECT id, google_sub, email, display_name
+    SELECT id, google_sub, email, display_name, picture_url
     FROM users
     WHERE google_sub = ?
     `,
     [googleSub],
+  );
+}
+
+export async function updateUserProfile(
+  db: SqlClient,
+  userId: number,
+  input: {
+    displayName: string | null;
+    pictureUrl: string | null;
+  },
+): Promise<UserRecord | null> {
+  await db.run(
+    `
+    UPDATE users
+    SET display_name = ?, picture_url = ?, updated_at = datetime('now')
+    WHERE id = ?
+    `,
+    [input.displayName, input.pictureUrl, userId],
+  );
+
+  return db.first<UserRecord>(
+    `
+    SELECT id, google_sub, email, display_name, picture_url
+    FROM users
+    WHERE id = ?
+    `,
+    [userId],
   );
 }
 

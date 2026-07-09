@@ -26,6 +26,7 @@ export type CurrentUser = {
   googleSub: string;
   email: string;
   name?: string;
+  pictureUrl?: string;
 };
 
 export type OidcConfig = {

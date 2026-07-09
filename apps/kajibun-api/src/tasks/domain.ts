@@ -11,6 +11,7 @@ export type Task = {
   assigneeUserId: number | null;
   assigneeEmail: string | null;
   assigneeName: string | null;
+  assigneePictureUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,3 +1,4 @@
+import { Modal } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
@@ -12,10 +13,22 @@ const emptyForm: TaskInput = {
   intervalDays: 1,
 };
 
+type TaskFormState = Omit<TaskInput, 'intervalDays'> & {
+  intervalDaysText: string;
+};
+
+const emptyFormState: TaskFormState = {
+  title: '',
+  description: '',
+  dueDate: '',
+  intervalDaysText: '1',
+};
+
 export function TaskAdmin() {
   const queryClient = useQueryClient();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [form, setForm] = useState<TaskInput>(emptyForm);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [form, setForm] = useState<TaskFormState>(emptyFormState);
   const {
     data: tasks = [],
     isLoading,
@@ -28,7 +41,7 @@ export function TaskAdmin() {
   const createMutation = useMutation({
     mutationFn: createTask,
     onSuccess: (createdTask) => {
-      resetForm();
+      closeDialog();
       queryClient.setQueryData<Task[]>(['tasks'], (currentTasks) => [...(currentTasks ?? []), createdTask]);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -36,7 +49,7 @@ export function TaskAdmin() {
   const updateMutation = useMutation({
     mutationFn: ({ taskId, input }: { taskId: string; input: TaskInput }) => updateTask(taskId, input),
     onSuccess: (updatedTask) => {
-      resetForm();
+      closeDialog();
       queryClient.setQueryData<Task[]>(['tasks'], (currentTasks) =>
         currentTasks?.map((task) => (task.id === updatedTask.id ? updatedTask : task)),
       );
@@ -47,7 +60,7 @@ export function TaskAdmin() {
     mutationFn: deleteTask,
     onSuccess: (_, deletedTaskId) => {
       if (editingTaskId) {
-        resetForm();
+        closeDialog();
       }
       queryClient.setQueryData<Task[]>(['tasks'], (currentTasks) =>
         currentTasks?.filter((task) => task.id !== deletedTaskId),
@@ -57,19 +70,29 @@ export function TaskAdmin() {
   });
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  function startCreate() {
+    setEditingTaskId(null);
+    setForm(emptyFormState);
+    setIsDialogOpen(true);
+  }
+
   function startEdit(task: Task) {
     setEditingTaskId(task.id);
     setForm({
       title: task.title,
       description: task.description ?? '',
       dueDate: task.dueDate ?? '',
-      intervalDays: task.intervalDays,
+      intervalDaysText: String(task.intervalDays),
     });
+    setIsDialogOpen(true);
   }
 
-  function resetForm() {
+  function closeDialog() {
     setEditingTaskId(null);
-    setForm(emptyForm);
+    setForm(emptyFormState);
+    setIsDialogOpen(false);
+    createMutation.reset();
+    updateMutation.reset();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -86,80 +109,91 @@ export function TaskAdmin() {
 
   return (
     <section className="space-y-6">
-      <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">{editingTaskId ? 'かじを編集' : 'かじを追加'}</h2>
-          {editingTaskId ? (
-            <button type="button" onClick={resetForm} className="text-sm font-medium text-slate-600">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-slate-900">かじ一覧</h2>
+        <button
+          type="button"
+          onClick={startCreate}
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm"
+        >
+          かじを追加
+        </button>
+      </div>
+
+      <Modal opened={isDialogOpen} onClose={closeDialog} title={editingTaskId ? 'かじを編集' : 'かじを追加'} centered>
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4">
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              名前
+              <input
+                value={form.title}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                required
+                className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              説明
+              <textarea
+                value={form.description ?? ''}
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                rows={3}
+                className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              期限
+              <input
+                type="date"
+                value={form.dueDate ?? ''}
+                onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
+                className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              日数
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={form.intervalDaysText}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    intervalDaysText: event.target.value,
+                  }))
+                }
+                required
+                className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 flex gap-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
+            >
+              {editingTaskId ? '保存' : '追加'}
+            </button>
+            <button
+              type="button"
+              onClick={closeDialog}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm"
+            >
               キャンセル
             </button>
+          </div>
+
+          {createMutation.isError || updateMutation.isError ? (
+            <p className="mt-3 text-sm text-red-600">保存できませんでした。</p>
           ) : null}
-        </div>
-
-        <div className="grid gap-4">
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
-            名前
-            <input
-              value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-              required
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
-            />
-          </label>
-
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
-            説明
-            <textarea
-              value={form.description ?? ''}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              rows={3}
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
-            />
-          </label>
-
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
-            期限
-            <input
-              type="date"
-              value={form.dueDate ?? ''}
-              onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
-            />
-          </label>
-
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
-            日数
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={form.intervalDays}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  intervalDays: Number(event.target.value),
-                }))
-              }
-              required
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
-            />
-          </label>
-        </div>
-
-        <div className="mt-5 flex gap-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
-          >
-            {editingTaskId ? '保存' : '追加'}
-          </button>
-        </div>
-
-        {createMutation.isError || updateMutation.isError ? (
-          <p className="mt-3 text-sm text-red-600">保存できませんでした。</p>
-        ) : null}
-      </form>
+        </form>
+      </Modal>
 
       {isLoading ? <StatusMessage>かじ一覧を読み込んでいます。</StatusMessage> : null}
       {isError ? <StatusMessage>かじ一覧を取得できませんでした。{error instanceof Error ? ` ${error.message}` : ''}</StatusMessage> : null}
@@ -203,12 +237,14 @@ export function TaskAdmin() {
   );
 }
 
-function normalizeForm(form: TaskInput): TaskInput {
+function normalizeForm(form: TaskFormState): TaskInput {
+  const intervalDays = Number(form.intervalDaysText);
+
   return {
     title: form.title.trim(),
     description: form.description?.trim() ? form.description.trim() : null,
     dueDate: form.dueDate?.trim() ? form.dueDate.trim() : null,
-    intervalDays: form.intervalDays,
+    intervalDays: Number.isFinite(intervalDays) && intervalDays > 0 ? intervalDays : emptyForm.intervalDays,
   };
 }
 

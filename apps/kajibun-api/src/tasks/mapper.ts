@@ -12,6 +12,7 @@ export function toTask(row: TaskRow): Task {
     assigneeUserId: row.assignee_user_id,
     assigneeEmail: row.assignee_email,
     assigneeName: row.assignee_name,
+    assigneePictureUrl: row.assignee_picture_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -27,6 +28,7 @@ export function toTaskResponse(task: Task): TaskResponse {
     intervalDays: task.intervalDays,
     assignee: task.assigneeName ?? task.assigneeEmail,
     assigneeUserId: task.assigneeUserId === null ? null : String(task.assigneeUserId),
+    assigneePictureUrl: task.assigneePictureUrl,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };

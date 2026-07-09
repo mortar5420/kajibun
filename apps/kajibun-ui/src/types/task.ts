@@ -9,6 +9,7 @@ export interface Task {
   intervalDays: number;
   assignee: string | null;
   assigneeUserId: string | null;
+  assigneePictureUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

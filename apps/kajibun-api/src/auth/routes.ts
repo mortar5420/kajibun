@@ -3,10 +3,10 @@ import { createD1Client } from "../adapters/persistence/d1";
 import { clearCookie, parseCookies, serializeCookie, shouldUseSecureCookie } from "../shared/cookies";
 import { randomToken, timingSafeEqualString } from "../shared/crypto";
 import { isAllowedUiOrigin } from "../shared/cors";
-import { jsonError } from "../shared/errors";
+import { httpError, jsonError, readJsonBody } from "../shared/errors";
 import { GOOGLE_AUTH_URL, exchangeCodeForToken, verifyGoogleIdToken } from "./google-oidc";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createSignedSessionCookie } from "./session";
-import { upsertUser } from "./repository";
+import { updateUserProfile, upsertUser } from "./repository";
 import { getCurrentUserOrResponse } from "./http";
 import { getOidcConfig } from "./service";
 import type { SessionPayload } from "./types";
@@ -164,8 +164,69 @@ export async function handleMe(request: Request, env: Env): Promise<Response> {
       sub: user.googleSub,
       email: user.email,
       name: user.name,
+      pictureUrl: user.pictureUrl,
     },
   });
+}
+
+export async function handleUpdateMe(request: Request, env: Env): Promise<Response> {
+  const db = createD1Client(env.DB);
+  const user = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
+  if (user instanceof Response) {
+    return user;
+  }
+
+  const input = parseProfileInput(await readJsonBody<{ name?: unknown; pictureUrl?: unknown }>(request));
+  const updatedUser = await updateUserProfile(db, user.id, input);
+  if (!updatedUser) {
+    throw httpError("user_not_found", "User not found", 404);
+  }
+
+  return Response.json({
+    user: {
+      id: updatedUser.id,
+      sub: updatedUser.google_sub,
+      email: updatedUser.email,
+      name: updatedUser.display_name ?? undefined,
+      pictureUrl: updatedUser.picture_url ?? undefined,
+    },
+  });
+}
+
+function parseProfileInput(input: { name?: unknown; pictureUrl?: unknown }): {
+  displayName: string | null;
+  pictureUrl: string | null;
+} {
+  if (input.name !== undefined && typeof input.name !== "string") {
+    throw httpError("invalid_profile", "name must be a string", 400);
+  }
+  if (input.pictureUrl !== undefined && typeof input.pictureUrl !== "string") {
+    throw httpError("invalid_profile", "pictureUrl must be a string", 400);
+  }
+
+  const displayName = input.name?.trim() || null;
+  const pictureUrl = input.pictureUrl?.trim() || null;
+  if (displayName && displayName.length > 80) {
+    throw httpError("invalid_profile", "name must be 80 characters or fewer", 400);
+  }
+  if (pictureUrl) {
+    try {
+      const url = new URL(pictureUrl);
+      if (url.protocol !== "https:") {
+        throw new Error("invalid protocol");
+      }
+    } catch {
+      throw httpError("invalid_profile", "pictureUrl must be an HTTPS URL", 400);
+    }
+  }
+
+  return {
+    displayName,
+    pictureUrl,
+  };
 }
 
 function missingOidcConfigResponse(): Response {

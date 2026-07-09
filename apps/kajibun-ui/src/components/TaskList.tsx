@@ -111,7 +111,17 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
               </div>
 
               <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                <span>担当: {task.assignee ?? '未設定'}</span>
+                <span className="flex items-center gap-2">
+                  担当:
+                  {task.assignee ? (
+                    <>
+                      <AssigneeAvatar name={task.assignee} pictureUrl={task.assigneePictureUrl} />
+                      <span>{task.assignee}</span>
+                    </>
+                  ) : (
+                    <span>未設定</span>
+                  )}
+                </span>
                 <span>期限: {task.dueDate ?? '未設定'}</span>
                 <span>日数: {task.intervalDays}</span>
               </div>
@@ -153,6 +163,18 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
 function StatusMessage({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">{children}</div>;
+}
+
+function AssigneeAvatar({ name, pictureUrl }: { name: string; pictureUrl: string | null }) {
+  if (pictureUrl) {
+    return <img src={pictureUrl} alt="" className="h-6 w-6 rounded-full object-cover" referrerPolicy="no-referrer" />;
+  }
+
+  return (
+    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 function updateTaskCache(queryClient: ReturnType<typeof useQueryClient>, updatedTask: Task) {

@@ -33,6 +33,11 @@ type VapidPublicKeyResponse = {
   publicKey: string | null;
 };
 
+export type UserProfileInput = {
+  name: string;
+  pictureUrl: string;
+};
+
 type UserResponse = Omit<User, 'id'> & {
   id: number | string;
 };
@@ -93,6 +98,18 @@ export async function logout(): Promise<void> {
   await request<{ ok: boolean }>('/auth/logout', {
     method: 'POST',
   });
+}
+
+export async function updateCurrentUserProfile(input: UserProfileInput): Promise<User> {
+  const data = await request<{ user: UserResponse }>('/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+
+  return {
+    ...data.user,
+    id: String(data.user.id),
+  };
 }
 
 export async function getTasks(): Promise<Task[]> {

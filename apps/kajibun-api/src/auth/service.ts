@@ -94,6 +94,7 @@ export async function getCurrentUser(
       googleSub: user.google_sub,
       email: user.email,
       name: user.display_name ?? undefined,
+      pictureUrl: user.picture_url ?? undefined,
     },
   };
 }

@@ -199,7 +199,7 @@ async function sendNotificationJob(
   let lastError = "push_send_failed";
 
   for (const subscription of subscriptions) {
-    const result = await pushSender.send(subscription);
+    const result = await pushSender.send(subscription, job.payload);
     if (result.ok) {
       await repository.markJobSent(job.id);
       return "sent";

@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "lint": "bun run --cwd apps/kajibun-ui lint",
+    "test": "bun run --cwd apps/kajibun-api test",
     "typecheck": "bun run --cwd apps/kajibun-ui typecheck && bun run --cwd apps/kajibun-api typecheck",
     "build": "bun run --cwd apps/kajibun-ui build",
     "deploy:dry-run": "bun run --cwd apps/kajibun-api deploy:dry-run"

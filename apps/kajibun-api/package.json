@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "bun test src",
     "deploy": "bun scripts/deploy.mjs",
     "deploy:dev": "bun scripts/deploy.mjs --env dev",
     "deploy:prod": "bun scripts/deploy.mjs --env prod",

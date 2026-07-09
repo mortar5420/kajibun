@@ -1,15 +1,15 @@
 self.addEventListener('push', (event) => {
+  const notification = getNotificationPayload(event);
+
   event.waitUntil(
-    getNotificationPayload().then((notification) =>
-      self.registration.showNotification(notification.title, {
-        body: notification.body,
-        icon: '/vite.svg',
-        badge: '/vite.svg',
-        data: {
-          url: notification.url,
-        },
-      }),
-    ),
+    self.registration.showNotification(notification.title, {
+      body: notification.body,
+      icon: '/vite.svg',
+      badge: '/vite.svg',
+      data: {
+        url: notification.url,
+      },
+    }),
   );
 });
 
@@ -31,20 +31,14 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-async function getNotificationPayload() {
+function getNotificationPayload(event) {
   try {
-    const response = await fetch('/api/notifications/latest', {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    if (response.ok) {
-      const data = await response.json();
-      if (data.notification?.title && data.notification?.body) {
-        return data.notification;
-      }
+    const data = event.data?.json();
+    if (data?.title && data?.body) {
+      return data;
     }
   } catch {
-    // Fall back to a generic notification when the app session is unavailable.
+    // Fall back to a generic notification when the push payload is unavailable.
   }
 
   return {

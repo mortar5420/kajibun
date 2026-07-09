@@ -1,6 +1,6 @@
 import { base64UrlEncode, base64UrlToBytes } from "../../shared/encoding";
 import type { PushSender } from "../../notifications/push-sender";
-import type { PushSendResult, PushSubscriptionRecord } from "../../notifications/types";
+import type { NotificationPayload, PushSendResult, PushSubscriptionRecord } from "../../notifications/types";
 
 type WebPushConfig = {
   publicKey?: string;
@@ -10,7 +10,7 @@ type WebPushConfig = {
 
 export function createWebPushSender(config: WebPushConfig): PushSender {
   return {
-    async send(subscription: PushSubscriptionRecord): Promise<PushSendResult> {
+    async send(subscription: PushSubscriptionRecord, payload: NotificationPayload): Promise<PushSendResult> {
       if (!config.publicKey || !config.privateKey || !config.subject) {
         return pushSendError("web_push_not_configured", true, false);
       }
@@ -22,13 +22,17 @@ export function createWebPushSender(config: WebPushConfig): PushSender {
           privateKey: config.privateKey,
           subject: config.subject,
         });
+        const encryptedPayload = await encryptWebPushPayload(subscription, payload);
 
         const response = await fetch(subscription.endpoint, {
           method: "POST",
           headers: {
             Authorization: `vapid t=${jwt}, k=${config.publicKey}`,
+            "Content-Encoding": "aes128gcm",
+            "Content-Type": "application/octet-stream",
             TTL: "60",
           },
+          body: encryptedPayload,
         });
 
         if (response.ok) {
@@ -45,6 +49,116 @@ export function createWebPushSender(config: WebPushConfig): PushSender {
       }
     },
   };
+}
+
+async function encryptWebPushPayload(
+  subscription: PushSubscriptionRecord,
+  payload: NotificationPayload,
+): Promise<Uint8Array> {
+  const userAgentPublicKeyBytes = base64UrlToBytes(subscription.p256dh);
+  const authSecretBytes = base64UrlToBytes(subscription.auth);
+  if (userAgentPublicKeyBytes.length !== 65 || userAgentPublicKeyBytes[0] !== 4) {
+    throw new Error("invalid_subscription_public_key");
+  }
+  if (authSecretBytes.length !== 16) {
+    throw new Error("invalid_subscription_auth_secret");
+  }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const applicationServerKeys = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    true,
+    ["deriveBits"],
+  );
+  const applicationServerPublicKeyBytes = new Uint8Array(
+    await crypto.subtle.exportKey("raw", applicationServerKeys.publicKey),
+  );
+  const userAgentPublicKey = await importP256PublicKey(userAgentPublicKeyBytes);
+  const sharedSecret = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: userAgentPublicKey,
+      },
+      applicationServerKeys.privateKey,
+      256,
+    ),
+  );
+
+  const keyInfo = concatBytes(
+    utf8Bytes("WebPush: info"),
+    new Uint8Array([0]),
+    userAgentPublicKeyBytes,
+    applicationServerPublicKeyBytes,
+  );
+  const ikm = await hmacSha256(await hmacSha256(authSecretBytes, sharedSecret), concatBytes(keyInfo, new Uint8Array([1])));
+  const prk = await hmacSha256(salt, ikm);
+  const contentEncryptionKey = (await hmacSha256(prk, utf8Bytes("Content-Encoding: aes128gcm\0\x01"))).slice(0, 16);
+  const nonce = (await hmacSha256(prk, utf8Bytes("Content-Encoding: nonce\0\x01"))).slice(0, 12);
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    contentEncryptionKey,
+    {
+      name: "AES-GCM",
+    },
+    false,
+    ["encrypt"],
+  );
+  const plaintext = concatBytes(utf8Bytes(JSON.stringify(payload)), new Uint8Array([2]));
+  const recordSize = 4096;
+  if (plaintext.length + 16 >= recordSize) {
+    throw new Error("web_push_payload_too_large");
+  }
+
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonce,
+        tagLength: 128,
+      },
+      aesKey,
+      plaintext,
+    ),
+  );
+  const header = new Uint8Array(21 + applicationServerPublicKeyBytes.length);
+  header.set(salt, 0);
+  new DataView(header.buffer).setUint32(16, recordSize, false);
+  header[20] = applicationServerPublicKeyBytes.length;
+  header.set(applicationServerPublicKeyBytes, 21);
+
+  return concatBytes(header, ciphertext);
+}
+
+async function importP256PublicKey(keyBytes: Uint8Array): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    false,
+    [],
+  );
+}
+
+async function hmacSha256(keyBytes: Uint8Array, value: Uint8Array): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
+    false,
+    ["sign"],
+  );
+
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, value));
 }
 
 async function createVapidJwt(input: {
@@ -110,6 +224,17 @@ async function createVapidJwt(input: {
 
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
+}
+
+function concatBytes(...chunks: Uint8Array[]): Uint8Array {
+  const result = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return result;
 }
 
 function pushSendError(error: string, retryable: boolean, revokeSubscription: boolean): PushSendResult {

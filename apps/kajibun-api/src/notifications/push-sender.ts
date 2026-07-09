@@ -1,5 +1,5 @@
-import type { PushSendResult, PushSubscriptionRecord } from "./types";
+import type { NotificationPayload, PushSendResult, PushSubscriptionRecord } from "./types";
 
 export interface PushSender {
-  send(subscription: PushSubscriptionRecord): Promise<PushSendResult>;
+  send(subscription: PushSubscriptionRecord, payload: NotificationPayload): Promise<PushSendResult>;
 }

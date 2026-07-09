@@ -1,26 +1,14 @@
 import type { CurrentUser } from "../auth/types";
-import type { SqlClient } from "../db/client";
-import { addDaysToDate, getTodayDateString } from "../shared/date";
+import { isAllowedEmail } from "../auth/policy";
+import { getTodayDateString } from "../shared/date";
 import { httpError } from "../shared/errors";
+import { applyTaskDetails, completeTask } from "./domain";
 import { dispatchTaskEvents } from "./event-handlers";
-import {
-  findTask,
-  insertTask,
-  listTasks,
-  markTaskDeleted,
-  resolveAssignee,
-  updateTaskAssignee,
-  updateTaskDetails,
-  updateTaskStatus,
-} from "./repository";
-import type { TaskRow, TaskStatus } from "./types";
+import type { TaskRepository } from "./repository";
+import type { TaskStatus, UserLookup } from "./types";
+import type { Task, TaskDetails } from "./domain";
 
-export type TaskDetailsInput = {
-  title?: string;
-  description?: string | null;
-  dueDate?: string | null;
-  intervalDays?: number;
-};
+export type TaskDetailsInput = Partial<TaskDetails>;
 
 export type AssigneeInput = {
   assigneeUserId?: number | string | null;
@@ -32,18 +20,18 @@ export type CompleteTaskInput = {
   status?: TaskStatus;
 };
 
-export async function listTaskUseCase(db: SqlClient): Promise<TaskRow[]> {
-  return listTasks(db);
+export async function listTaskUseCase(repository: TaskRepository): Promise<Task[]> {
+  return repository.list();
 }
 
 export async function createTaskUseCase(
-  db: SqlClient,
+  repository: TaskRepository,
   actor: CurrentUser,
-  input: Required<TaskDetailsInput>,
-): Promise<TaskRow> {
-  const taskId = await insertTask(db, input);
+  input: TaskDetails,
+): Promise<Task> {
+  const taskId = await repository.insert(input);
 
-  await dispatchTaskEvents(db, [
+  await dispatchTaskEvents(repository, [
     {
       type: "TaskCreated",
       taskId,
@@ -56,25 +44,20 @@ export async function createTaskUseCase(
     },
   ]);
 
-  return getExistingTask(db, taskId);
+  return getExistingTask(repository, taskId);
 }
 
 export async function updateTaskUseCase(
-  db: SqlClient,
+  repository: TaskRepository,
   actor: CurrentUser,
   taskId: number,
   input: TaskDetailsInput,
-): Promise<TaskRow> {
-  const task = await getExistingTask(db, taskId);
-  const next = {
-    title: input.title ?? task.title,
-    description: input.description !== undefined ? input.description : task.description,
-    dueDate: input.dueDate !== undefined ? input.dueDate : task.due_date,
-    intervalDays: input.intervalDays !== undefined ? input.intervalDays : task.interval_days,
-  };
+): Promise<Task> {
+  const task = await getExistingTask(repository, taskId);
+  const next = applyTaskDetails(task, input);
 
-  await updateTaskDetails(db, taskId, next);
-  await dispatchTaskEvents(db, [
+  await repository.updateDetails(taskId, next);
+  await dispatchTaskEvents(repository, [
     {
       type: "TaskUpdated",
       taskId,
@@ -83,21 +66,21 @@ export async function updateTaskUseCase(
         from: {
           title: task.title,
           description: task.description,
-          dueDate: task.due_date,
-          intervalDays: task.interval_days,
+          dueDate: task.dueDate,
+          intervalDays: task.intervalDays,
         },
         to: next,
       },
     },
   ]);
 
-  return getExistingTask(db, taskId);
+  return getExistingTask(repository, taskId);
 }
 
-export async function deleteTaskUseCase(db: SqlClient, actor: CurrentUser, taskId: number): Promise<void> {
-  const task = await getExistingTask(db, taskId);
+export async function deleteTaskUseCase(repository: TaskRepository, actor: CurrentUser, taskId: number): Promise<void> {
+  const task = await getExistingTask(repository, taskId);
 
-  await dispatchTaskEvents(db, [
+  await dispatchTaskEvents(repository, [
     {
       type: "TaskDeleted",
       taskId,
@@ -105,64 +88,59 @@ export async function deleteTaskUseCase(db: SqlClient, actor: CurrentUser, taskI
       payload: {
         title: task.title,
         description: task.description,
-        dueDate: task.due_date,
-        intervalDays: task.interval_days,
+        dueDate: task.dueDate,
+        intervalDays: task.intervalDays,
         status: task.status,
-        assigneeUserId: task.assignee_user_id,
+        assigneeUserId: task.assigneeUserId,
       },
     },
   ]);
 
-  await markTaskDeleted(db, taskId);
+  await repository.markDeleted(taskId);
 }
 
 export async function reassignTaskUseCase(
-  db: SqlClient,
+  repository: TaskRepository,
   allowedEmailsConfig: string | undefined,
   actor: CurrentUser,
   taskId: number,
   input: AssigneeInput,
-): Promise<TaskRow> {
-  const assignee = await resolveAssignee(db, allowedEmailsConfig, input);
-  const task = await getExistingTask(db, taskId);
+): Promise<Task> {
+  const assignee = await resolveAssignee(repository, allowedEmailsConfig, input);
+  const task = await getExistingTask(repository, taskId);
 
-  await updateTaskAssignee(db, taskId, assignee?.id ?? null);
-  await dispatchTaskEvents(db, [
+  await repository.updateAssignee(taskId, assignee?.id ?? null);
+  await dispatchTaskEvents(repository, [
     {
       type: "TaskReassigned",
       taskId,
       actorUserId: actor.id,
       payload: {
-        fromUserId: task.assignee_user_id,
+        fromUserId: task.assigneeUserId,
         toUserId: assignee?.id ?? null,
       },
     },
   ]);
 
-  return getExistingTask(db, taskId);
+  return getExistingTask(repository, taskId);
 }
 
 export async function completeTaskUseCase(
-  db: SqlClient,
+  repository: TaskRepository,
   actor: CurrentUser,
   taskId: number,
   input: CompleteTaskInput,
-): Promise<TaskRow> {
-  const task = await getExistingTask(db, taskId);
+): Promise<Task> {
+  const task = await getExistingTask(repository, taskId);
   const nextStatus = input.status ?? (input.completed === false ? "todo" : "done");
   if (nextStatus !== "todo" && nextStatus !== "done") {
     throw httpError("invalid_status", "Task status must be todo or done", 400);
   }
 
-  const today = getTodayDateString();
-  const nextDueDate = nextStatus === "done" ? addDaysToDate(today, task.interval_days) : null;
+  const completion = completeTask(task, nextStatus, getTodayDateString());
 
-  await updateTaskStatus(db, taskId, {
-    status: nextStatus,
-    dueDate: nextDueDate,
-    clearAssignee: nextStatus === "todo",
-  });
-  await dispatchTaskEvents(db, [
+  await repository.updateStatus(taskId, completion);
+  await dispatchTaskEvents(repository, [
     {
       type: nextStatus === "done" ? "TaskCompleted" : "TaskReopened",
       taskId,
@@ -170,17 +148,47 @@ export async function completeTaskUseCase(
       payload: {
         fromStatus: task.status,
         toStatus: nextStatus,
-        clearedAssigneeUserId: nextStatus === "todo" ? task.assignee_user_id : null,
-        nextDueDate,
+        clearedAssigneeUserId: completion.clearedAssigneeUserId,
+        nextDueDate: completion.nextDueDate,
       },
     },
   ]);
 
-  return getExistingTask(db, taskId);
+  return getExistingTask(repository, taskId);
 }
 
-async function getExistingTask(db: SqlClient, taskId: number): Promise<TaskRow> {
-  const task = await findTask(db, taskId);
+async function resolveAssignee(
+  repository: TaskRepository,
+  allowedEmailsConfig: string | undefined,
+  input: AssigneeInput,
+): Promise<UserLookup | null> {
+  if (input.assigneeUserId === null || input.assigneeEmail === null) {
+    return null;
+  }
+
+  let user: UserLookup | null = null;
+
+  if (input.assigneeUserId !== undefined) {
+    user = await repository.findUserById(Number(input.assigneeUserId));
+  } else if (input.assigneeEmail) {
+    user = await repository.findUserByEmail(input.assigneeEmail);
+  } else {
+    throw httpError("invalid_assignee", "assigneeUserId or assigneeEmail is required", 400);
+  }
+
+  if (!user) {
+    throw httpError("assignee_not_found", "Assignee user not found", 404);
+  }
+
+  if (!isAllowedEmail(user.email, allowedEmailsConfig)) {
+    throw httpError("invalid_assignee", "Assignee is not an allowed user", 400);
+  }
+
+  return user;
+}
+
+async function getExistingTask(repository: TaskRepository, taskId: number): Promise<Task> {
+  const task = await repository.findById(taskId);
   if (!task) {
     throw httpError("task_not_found", "Task not found", 404);
   }

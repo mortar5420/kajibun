@@ -14,6 +14,11 @@ export type TaskRow = {
   updated_at: string;
 };
 
+export type UserLookup = {
+  id: number;
+  email: string;
+};
+
 export type TaskInput = {
   title?: unknown;
   description?: unknown;

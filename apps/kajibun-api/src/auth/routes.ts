@@ -7,7 +7,8 @@ import { jsonError } from "../shared/errors";
 import { GOOGLE_AUTH_URL, exchangeCodeForToken, verifyGoogleIdToken } from "./google-oidc";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createSignedSessionCookie } from "./session";
 import { upsertUser } from "./repository";
-import { getCurrentUserOrResponse, getOidcConfig, missingOidcConfigResponse } from "./service";
+import { getCurrentUserOrResponse } from "./http";
+import { getOidcConfig } from "./service";
 import type { SessionPayload } from "./types";
 
 const STATE_COOKIE = "kajibun_oauth_state";
@@ -165,6 +166,14 @@ export async function handleMe(request: Request, env: Env): Promise<Response> {
       name: user.name,
     },
   });
+}
+
+function missingOidcConfigResponse(): Response {
+  return jsonError(
+    "missing_config",
+    "GOOGLE_OIDC_CLIENT_ID, GOOGLE_OIDC_CLIENT_SECRET, SESSION_SECRET, or ALLOWED_GOOGLE_EMAILS is not configured",
+    500,
+  );
 }
 
 function getSafeReturnTo(value: string | null | undefined, defaultOrigin: string): string | null {

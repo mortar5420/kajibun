@@ -20,10 +20,21 @@ export async function handleScheduled(env: Env): Promise<void> {
     notificationRepository,
     pushSender,
     env.ALLOWED_GOOGLE_EMAILS,
+    getDueTodayNotificationSlot(),
   );
   const retryResult = await sendPendingNotificationsUseCase(notificationRepository, pushSender);
   console.log("notification scheduled run finished", {
     dueToday: dueTodayResult,
     retry: retryResult,
   });
+}
+
+function getDueTodayNotificationSlot(date = new Date()): string {
+  const hour = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  }).format(date);
+
+  return `${hour}:00`;
 }

@@ -4,7 +4,7 @@ compatibility_date = "2025-12-01"
 workers_dev = true
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["0 3,9 * * *"]
 
 [assets]
 directory = "../kajibun-ui/dist"
@@ -27,7 +27,7 @@ name = "kajibun-dev"
 workers_dev = true
 
 [env.dev.triggers]
-crons = ["*/5 * * * *"]
+crons = ["0 3,9 * * *"]
 
 [[env.dev.d1_databases]]
 binding = "DB"

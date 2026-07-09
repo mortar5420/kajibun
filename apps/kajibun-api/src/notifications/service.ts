@@ -74,6 +74,7 @@ export async function sendDueTodayNotificationsUseCase(
   notificationRepository: NotificationRepository,
   pushSender: PushSender,
   allowedEmailsConfig?: string,
+  notificationSlot = "scheduled",
   today = getTodayDateString(),
 ): Promise<{ sent: number; failed: number; pending: number }> {
   const tasks = await taskRepository.list();
@@ -103,7 +104,7 @@ export async function sendDueTodayNotificationsUseCase(
         type: "task_due_today",
         recipientUserId: recipient.id,
         taskId: task.id,
-        dedupeKey: ["task_due_today", today, task.id, recipient.id].join(":"),
+        dedupeKey: ["task_due_today", today, notificationSlot, task.id, recipient.id].join(":"),
         payload,
       });
 

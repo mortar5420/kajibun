@@ -4,6 +4,7 @@ import { getTodayDateString } from "../shared/date";
 import { httpError } from "../shared/errors";
 import { applyTaskDetails, completeTask } from "./domain";
 import { dispatchTaskEvents } from "./event-handlers";
+import type { TaskEventHandler } from "./event-handlers";
 import type { TaskRepository } from "./repository";
 import type { TaskStatus, UserLookup } from "./types";
 import type { Task, TaskDetails } from "./domain";
@@ -18,6 +19,10 @@ export type AssigneeInput = {
 export type CompleteTaskInput = {
   completed?: boolean;
   status?: TaskStatus;
+};
+
+export type TaskUseCaseOptions = {
+  eventHandlers?: TaskEventHandler[];
 };
 
 export async function listTaskUseCase(repository: TaskRepository): Promise<Task[]> {
@@ -130,6 +135,7 @@ export async function completeTaskUseCase(
   actor: CurrentUser,
   taskId: number,
   input: CompleteTaskInput,
+  options: TaskUseCaseOptions = {},
 ): Promise<Task> {
   const task = await getExistingTask(repository, taskId);
   const nextStatus = input.status ?? (input.completed === false ? "todo" : "done");
@@ -140,19 +146,23 @@ export async function completeTaskUseCase(
   const completion = completeTask(task, nextStatus, getTodayDateString());
 
   await repository.updateStatus(taskId, completion);
-  await dispatchTaskEvents(repository, [
-    {
-      type: nextStatus === "done" ? "TaskCompleted" : "TaskReopened",
-      taskId,
-      actorUserId: actor.id,
-      payload: {
-        fromStatus: task.status,
-        toStatus: nextStatus,
-        clearedAssigneeUserId: completion.clearedAssigneeUserId,
-        nextDueDate: completion.nextDueDate,
+  await dispatchTaskEvents(
+    repository,
+    [
+      {
+        type: nextStatus === "done" ? "TaskCompleted" : "TaskReopened",
+        taskId,
+        actorUserId: actor.id,
+        payload: {
+          fromStatus: task.status,
+          toStatus: nextStatus,
+          clearedAssigneeUserId: completion.clearedAssigneeUserId,
+          nextDueDate: completion.nextDueDate,
+        },
       },
-    },
-  ]);
+    ],
+    options.eventHandlers,
+  );
 
   return getExistingTask(repository, taskId);
 }

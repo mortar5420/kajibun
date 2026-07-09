@@ -29,6 +29,10 @@ export type TaskInput = {
   intervalDays: number;
 };
 
+type VapidPublicKeyResponse = {
+  publicKey: string | null;
+};
+
 type UserResponse = Omit<User, 'id'> & {
   id: number | string;
 };
@@ -136,4 +140,25 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
   });
 
   return data.task;
+}
+
+export async function getVapidPublicKey(): Promise<string | null> {
+  const data = await request<VapidPublicKeyResponse>('/push/vapid-public-key');
+  return data.publicKey;
+}
+
+export async function subscribePush(subscription: PushSubscriptionJSON): Promise<void> {
+  await request<{ ok: boolean }>('/push-subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(subscription),
+  });
+}
+
+export async function sendTestPush(): Promise<void> {
+  const data = await request<{ ok: boolean; status: 'sent' | 'failed' | 'pending' }>('/push/test', {
+    method: 'POST',
+  });
+  if (!data.ok) {
+    throw new ApiError(`Push test was not sent: ${data.status}`, 400, 'push_test_not_sent');
+  }
 }

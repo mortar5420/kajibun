@@ -1,4 +1,5 @@
 import { handleCallback, handleLogin, handleLogout, handleMe, isCallbackPath, isLoginPath } from "../auth/routes";
+import { handleGetVapidPublicKey, handleSendTestPush, handleSubscribePush } from "../notifications/routes";
 import {
   handleCompleteTask,
   handleCreateTask,
@@ -38,6 +39,18 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
   if (request.method === "GET" && apiPath === "/me") {
     return handleMe(request, env);
+  }
+
+  if (request.method === "GET" && apiPath === "/push/vapid-public-key") {
+    return handleGetVapidPublicKey(env);
+  }
+
+  if (request.method === "POST" && apiPath === "/push-subscriptions") {
+    return handleSubscribePush(request, env);
+  }
+
+  if (request.method === "POST" && apiPath === "/push/test") {
+    return handleSendTestPush(request, env);
   }
 
   if (request.method === "GET" && apiPath === "/tasks") {
@@ -94,6 +107,8 @@ function getApiPath(pathname: string): string | null {
     pathname === "/me" ||
     pathname === "/tasks" ||
     pathname.startsWith("/auth/") ||
+    pathname.startsWith("/push/") ||
+    pathname === "/push-subscriptions" ||
     pathname.startsWith("/tasks/")
   ) {
     return pathname;

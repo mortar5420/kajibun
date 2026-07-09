@@ -1,6 +1,9 @@
 import { getCurrentUserOrResponse } from "../auth/http";
+import { createWebPushSender } from "../adapters/push/web-push";
 import { createD1Client } from "../adapters/persistence/d1";
 import type { Env } from "../app/env";
+import { createSqlNotificationRepository } from "../notifications/repository";
+import { handleTaskNotificationEvent } from "../notifications/service";
 import { readJsonBody } from "../shared/errors";
 import { toTaskResponse } from "./mapper";
 import { createSqlTaskRepository } from "./repository";
@@ -117,6 +120,12 @@ export async function handleReassignTask(request: Request, env: Env, taskId: num
 export async function handleCompleteTask(request: Request, env: Env, taskId: number): Promise<Response> {
   const db = createD1Client(env.DB);
   const taskRepository = createSqlTaskRepository(db);
+  const notificationRepository = createSqlNotificationRepository(db);
+  const pushSender = createWebPushSender({
+    publicKey: env.VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+    subject: env.VAPID_SUBJECT,
+  });
   const actor = await getCurrentUserOrResponse(request, {
     db,
     sessionSecret: env.SESSION_SECRET,
@@ -125,7 +134,16 @@ export async function handleCompleteTask(request: Request, env: Env, taskId: num
     return actor;
   }
   const body = await readJsonBody<{ completed?: boolean; status?: TaskStatus }>(request);
-  const updatedTask = await completeTaskUseCase(taskRepository, actor, taskId, body);
+  const updatedTask = await completeTaskUseCase(taskRepository, actor, taskId, body, {
+    eventHandlers: [
+      (event) =>
+        handleTaskNotificationEvent(event, {
+          notificationRepository,
+          pushSender,
+          allowedEmailsConfig: env.ALLOWED_GOOGLE_EMAILS,
+        }),
+    ],
+  });
 
   return Response.json({
     task: toTaskResponse(updatedTask),

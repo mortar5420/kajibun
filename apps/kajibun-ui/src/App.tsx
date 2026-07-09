@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import '@mantine/core/styles.css';
+import { PushNotificationButton } from './components/PushNotificationButton';
 import { TaskAdmin } from './components/TaskAdmin';
 import { TaskList } from './components/TaskList';
 import { getCurrentUser, getLoginUrl, logout } from './lib/api';
@@ -42,6 +43,7 @@ function AppContent() {
             {currentUser ? (
               <>
                 <span className="text-sm text-slate-600">{currentUser.name ?? currentUser.email}</span>
+                <PushNotificationButton />
                 <button
                   type="button"
                   onClick={() => logoutMutation.mutate()}

@@ -1,7 +1,13 @@
 import type { TaskRepository } from "./repository";
 import type { TaskDomainEvent } from "./events";
 
-export async function dispatchTaskEvents(repository: TaskRepository, events: TaskDomainEvent[]): Promise<void> {
+export type TaskEventHandler = (event: TaskDomainEvent) => Promise<void>;
+
+export async function dispatchTaskEvents(
+  repository: TaskRepository,
+  events: TaskDomainEvent[],
+  handlers: TaskEventHandler[] = [],
+): Promise<void> {
   for (const event of events) {
     await repository.recordEvent({
       taskId: event.taskId,
@@ -9,5 +15,9 @@ export async function dispatchTaskEvents(repository: TaskRepository, events: Tas
       eventType: event.type,
       payload: event.payload,
     });
+
+    for (const handler of handlers) {
+      await handler(event);
+    }
   }
 }

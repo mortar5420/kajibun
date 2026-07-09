@@ -46,6 +46,7 @@ export interface NotificationRepository {
     dedupeKey: string;
     payload: NotificationPayload;
   }): Promise<NotificationJob>;
+  findLatestSentJobByRecipient(userId: number): Promise<NotificationJob | null>;
   listPendingJobs(limit: number): Promise<NotificationJob[]>;
   markJobSent(jobId: number): Promise<void>;
   markJobPending(jobId: number, error: string): Promise<void>;
@@ -179,6 +180,21 @@ export function createSqlNotificationRepository(db: SqlClient): NotificationRepo
       }
 
       return toNotificationJob(job);
+    },
+
+    async findLatestSentJobByRecipient(userId: number): Promise<NotificationJob | null> {
+      const row = await db.first<NotificationJobRow>(
+        `
+        SELECT id, type, recipient_user_id, task_id, dedupe_key, payload_json, status, attempts
+        FROM notification_jobs
+        WHERE recipient_user_id = ? AND status = 'sent'
+        ORDER BY sent_at DESC, updated_at DESC, id DESC
+        LIMIT 1
+        `,
+        [userId],
+      );
+
+      return row ? toNotificationJob(row) : null;
     },
 
     async listPendingJobs(limit: number): Promise<NotificationJob[]> {

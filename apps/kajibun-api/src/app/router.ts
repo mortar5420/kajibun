@@ -12,7 +12,12 @@ import {
 } from "../auth/routes";
 import { corsPreflightResponse, withCors } from "../shared/cors";
 import { isHttpError, jsonError } from "../shared/errors";
-import { handleGetVapidPublicKey, handleSendTestPush, handleSubscribePush } from "../notifications/routes";
+import {
+  handleGetLatestNotification,
+  handleGetVapidPublicKey,
+  handleSendTestPush,
+  handleSubscribePush,
+} from "../notifications/routes";
 import {
   handleCompleteTask,
   handleCreateTask,
@@ -72,6 +77,7 @@ register("get", "/users/:userId/avatar", (request, env, params) =>
 
 register("get", "/push/vapid-public-key", (_request, env) => handleGetVapidPublicKey(env));
 register("post", "/push-subscriptions", handleSubscribePush);
+register("get", "/notifications/latest", handleGetLatestNotification);
 register("post", "/push/test", handleSendTestPush);
 
 register("get", "/tasks", handleListTasks);
@@ -152,6 +158,7 @@ function isApiPath(pathname: string): boolean {
     pathname === "/tasks" ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/users/") ||
+    pathname.startsWith("/notifications/") ||
     pathname.startsWith("/push/") ||
     pathname === "/push-subscriptions" ||
     pathname.startsWith("/tasks/")

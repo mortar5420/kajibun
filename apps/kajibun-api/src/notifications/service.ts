@@ -61,6 +61,14 @@ export async function sendPendingNotificationsUseCase(
   return result;
 }
 
+export async function getLatestNotificationUseCase(
+  repository: NotificationRepository,
+  actor: CurrentUser,
+): Promise<NotificationPayload | null> {
+  const job = await repository.findLatestSentJobByRecipient(actor.id);
+  return job?.payload ?? null;
+}
+
 export async function sendDueTodayNotificationsUseCase(
   taskRepository: TaskRepository,
   notificationRepository: NotificationRepository,
@@ -86,7 +94,7 @@ export async function sendDueTodayNotificationsUseCase(
       task.assigneeUserId === null ? recipients : recipients.filter((recipient) => recipient.id === task.assigneeUserId);
     const payload: NotificationPayload = {
       title: "今日が期限の家事があります",
-      body: task.title,
+      body: `「${task.title}」の期限は今日です。`,
       url: "/",
     };
 
@@ -140,9 +148,10 @@ async function enqueueAndSendTaskCompletedNotifications(
   },
 ): Promise<void> {
   const recipients = await options.notificationRepository.listUsersWithActiveSubscriptionsExcept(event.actorUserId);
+  const nextDueDateMessage = event.payload.nextDueDate ? ` 次回の期限は${event.payload.nextDueDate}です。` : "";
   const payload: NotificationPayload = {
-    title: "家事が完了しました",
-    body: "担当の家事が完了しました。",
+    title: `「${event.payload.title}」が完了しました`,
+    body: `家事が完了しました。${nextDueDateMessage}`,
     url: "/",
   };
 

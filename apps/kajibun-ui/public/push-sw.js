@@ -1,13 +1,15 @@
 self.addEventListener('push', (event) => {
   event.waitUntil(
-    self.registration.showNotification('kajibun', {
-      body: '家事の通知があります。',
-      icon: '/vite.svg',
-      badge: '/vite.svg',
-      data: {
-        url: '/',
-      },
-    }),
+    getNotificationPayload().then((notification) =>
+      self.registration.showNotification(notification.title, {
+        body: notification.body,
+        icon: '/vite.svg',
+        badge: '/vite.svg',
+        data: {
+          url: notification.url,
+        },
+      }),
+    ),
   );
 });
 
@@ -28,3 +30,26 @@ self.addEventListener('notificationclick', (event) => {
     }),
   );
 });
+
+async function getNotificationPayload() {
+  try {
+    const response = await fetch('/api/notifications/latest', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.notification?.title && data.notification?.body) {
+        return data.notification;
+      }
+    }
+  } catch {
+    // Fall back to a generic notification when the app session is unavailable.
+  }
+
+  return {
+    title: 'kajibun',
+    body: '家事の通知があります。',
+    url: '/',
+  };
+}

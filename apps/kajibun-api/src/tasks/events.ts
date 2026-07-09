@@ -57,6 +57,7 @@ export type TaskDomainEvent =
       taskId: number;
       actorUserId: number;
       payload: {
+        title: string;
         fromStatus: TaskStatus;
         toStatus: TaskStatus;
         clearedAssigneeUserId: number | null;

@@ -4,7 +4,7 @@ import type { Env } from "../app/env";
 import { getCurrentUserOrResponse } from "../auth/http";
 import { readJsonBody } from "../shared/errors";
 import { createSqlNotificationRepository } from "./repository";
-import { sendTestPushNotificationUseCase, subscribePushUseCase } from "./service";
+import { getLatestNotificationUseCase, sendTestPushNotificationUseCase, subscribePushUseCase } from "./service";
 import type { PushSubscriptionInput } from "./types";
 
 export function handleGetVapidPublicKey(env: Env): Response {
@@ -29,6 +29,24 @@ export async function handleSubscribePush(request: Request, env: Env): Promise<R
 
   return Response.json({
     ok: true,
+  });
+}
+
+export async function handleGetLatestNotification(request: Request, env: Env): Promise<Response> {
+  const db = createD1Client(env.DB);
+  const actor = await getCurrentUserOrResponse(request, {
+    db,
+    sessionSecret: env.SESSION_SECRET,
+  });
+  if (actor instanceof Response) {
+    return actor;
+  }
+
+  const repository = createSqlNotificationRepository(db);
+  const notification = await getLatestNotificationUseCase(repository, actor);
+
+  return Response.json({
+    notification,
   });
 }
 

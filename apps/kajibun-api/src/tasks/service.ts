@@ -154,6 +154,7 @@ export async function completeTaskUseCase(
         taskId,
         actorUserId: actor.id,
         payload: {
+          title: task.title,
           fromStatus: task.status,
           toStatus: nextStatus,
           clearedAssigneeUserId: completion.clearedAssigneeUserId,

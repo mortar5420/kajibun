@@ -1,7 +1,6 @@
 import { parseAllowedEmails } from "../auth/service";
-import type { Env } from "../app/env";
 import { httpError } from "../shared/errors";
-import type { TaskRow } from "./types";
+import type { TaskRow, TaskStatus } from "./types";
 
 export async function listTasks(db: D1Database): Promise<TaskRow[]> {
   const result = await db
@@ -58,35 +57,147 @@ export async function findTask(db: D1Database, taskId: number): Promise<TaskRow 
     .first<TaskRow>();
 }
 
+export async function insertTask(
+  db: D1Database,
+  input: {
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+    intervalDays: number;
+  },
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `
+      INSERT INTO tasks (title, description, status, due_date, interval_days, assignee_user_id, created_at, updated_at)
+      VALUES (?, ?, 'todo', ?, ?, NULL, datetime('now'), datetime('now'))
+      `,
+    )
+    .bind(input.title, input.description, input.dueDate, input.intervalDays)
+    .run();
+
+  return result.meta.last_row_id;
+}
+
+export async function updateTaskDetails(
+  db: D1Database,
+  taskId: number,
+  input: {
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+    intervalDays: number;
+  },
+): Promise<void> {
+  await db
+    .prepare(
+      `
+      UPDATE tasks
+      SET title = ?, description = ?, due_date = ?, interval_days = ?, updated_at = datetime('now')
+      WHERE id = ?
+      `,
+    )
+    .bind(input.title, input.description, input.dueDate, input.intervalDays, taskId)
+    .run();
+}
+
+export async function markTaskDeleted(db: D1Database, taskId: number): Promise<void> {
+  await db
+    .prepare(
+      `
+      UPDATE tasks
+      SET deleted_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+      `,
+    )
+    .bind(taskId)
+    .run();
+}
+
+export async function updateTaskAssignee(
+  db: D1Database,
+  taskId: number,
+  assigneeUserId: number | null,
+): Promise<void> {
+  await db
+    .prepare(
+      `
+      UPDATE tasks
+      SET assignee_user_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+      `,
+    )
+    .bind(assigneeUserId, taskId)
+    .run();
+}
+
+export async function updateTaskStatus(
+  db: D1Database,
+  taskId: number,
+  input: {
+    status: TaskStatus;
+    dueDate?: string | null;
+    clearAssignee?: boolean;
+  },
+): Promise<void> {
+  if (input.clearAssignee) {
+    await db
+      .prepare(
+        `
+        UPDATE tasks
+        SET status = ?, assignee_user_id = NULL, updated_at = datetime('now')
+        WHERE id = ?
+        `,
+      )
+      .bind(input.status, taskId)
+      .run();
+    return;
+  }
+
+  await db
+    .prepare(
+      `
+      UPDATE tasks
+      SET status = ?, due_date = ?, updated_at = datetime('now')
+      WHERE id = ?
+      `,
+    )
+    .bind(input.status, input.dueDate ?? null, taskId)
+    .run();
+}
+
 export async function resolveAssignee(
-  env: Env,
+  db: D1Database,
+  allowedEmailsConfig: string | undefined,
   body: { assigneeUserId?: number | string | null; assigneeEmail?: string | null },
 ): Promise<{ id: number; email: string } | null> {
   if (body.assigneeUserId === null || body.assigneeEmail === null) {
     return null;
   }
 
-  const allowedEmails = parseAllowedEmails(env.ALLOWED_GOOGLE_EMAILS);
+  const allowedEmails = parseAllowedEmails(allowedEmailsConfig);
   let user: { id: number; email: string } | null = null;
 
   if (body.assigneeUserId !== undefined) {
-    user = await env.DB.prepare(
-      `
-      SELECT id, email
-      FROM users
-      WHERE id = ?
-      `,
-    )
+    user = await db
+      .prepare(
+        `
+        SELECT id, email
+        FROM users
+        WHERE id = ?
+        `,
+      )
       .bind(Number(body.assigneeUserId))
       .first<{ id: number; email: string }>();
   } else if (body.assigneeEmail) {
-    user = await env.DB.prepare(
-      `
-      SELECT id, email
-      FROM users
-      WHERE lower(email) = lower(?)
-      `,
-    )
+    user = await db
+      .prepare(
+        `
+        SELECT id, email
+        FROM users
+        WHERE lower(email) = lower(?)
+        `,
+      )
       .bind(body.assigneeEmail)
       .first<{ id: number; email: string }>();
   } else {

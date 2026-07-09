@@ -1,18 +1,39 @@
 import { httpError } from "../shared/errors";
 import type { TaskInput } from "./types";
 
-export function parseTaskInput(body: TaskInput, options: { partial: boolean }): {
+export type ParsedTaskInput = {
   title?: string;
   description?: string | null;
   dueDate?: string | null;
   intervalDays?: number;
-} {
-  const result: {
-    title?: string;
-    description?: string | null;
-    dueDate?: string | null;
-    intervalDays?: number;
-  } = {};
+};
+
+export type CreateTaskInput = {
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  intervalDays: number;
+};
+
+export function parseCreateTaskInput(body: TaskInput): CreateTaskInput {
+  const input = parseTaskInput(body, { partial: false });
+
+  return {
+    title: input.title,
+    description: input.description,
+    dueDate: input.dueDate,
+    intervalDays: input.intervalDays,
+  };
+}
+
+export function parseUpdateTaskInput(body: TaskInput): ParsedTaskInput {
+  return parseTaskInput(body, { partial: true });
+}
+
+function parseTaskInput(body: TaskInput, options: { partial: false }): CreateTaskInput;
+function parseTaskInput(body: TaskInput, options: { partial: true }): ParsedTaskInput;
+function parseTaskInput(body: TaskInput, options: { partial: boolean }): CreateTaskInput | ParsedTaskInput {
+  const result: ParsedTaskInput = {};
 
   if (!options.partial || body.title !== undefined) {
     if (typeof body.title !== "string" || body.title.trim().length === 0) {
@@ -64,5 +85,5 @@ export function parseTaskInput(body: TaskInput, options: { partial: boolean }): 
     throw httpError("invalid_task_interval_days", "Task intervalDays is required", 400);
   }
 
-  return result;
+  return result as CreateTaskInput | ParsedTaskInput;
 }

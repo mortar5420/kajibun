@@ -3,32 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Task } from '../types/task';
-import { createTask, deleteTask, getTasks, updateTask } from '../lib/api';
-import type { TaskInput } from '../lib/api';
-
-const emptyForm: TaskInput = {
-  title: '',
-  description: '',
-  dueDate: '',
-  intervalDays: 1,
-};
-
-type TaskFormState = Omit<TaskInput, 'intervalDays'> & {
-  intervalDaysText: string;
-};
-
-const emptyFormState: TaskFormState = {
-  title: '',
-  description: '',
-  dueDate: '',
-  intervalDaysText: '1',
-};
+import { createTask, deleteTask, getTasks, updateTask } from '../features/tasks/api';
+import type { TaskInput } from '../features/tasks/api';
+import { emptyTaskFormState, normalizeTaskForm, taskToFormState } from '../features/tasks/model/taskForm';
 
 export function TaskAdmin() {
   const queryClient = useQueryClient();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [form, setForm] = useState<TaskFormState>(emptyFormState);
+  const [form, setForm] = useState(emptyTaskFormState);
   const {
     data: tasks = [],
     isLoading,
@@ -72,24 +55,19 @@ export function TaskAdmin() {
 
   function startCreate() {
     setEditingTaskId(null);
-    setForm(emptyFormState);
+    setForm(emptyTaskFormState);
     setIsDialogOpen(true);
   }
 
   function startEdit(task: Task) {
     setEditingTaskId(task.id);
-    setForm({
-      title: task.title,
-      description: task.description ?? '',
-      dueDate: task.dueDate ?? '',
-      intervalDaysText: String(task.intervalDays),
-    });
+    setForm(taskToFormState(task));
     setIsDialogOpen(true);
   }
 
   function closeDialog() {
     setEditingTaskId(null);
-    setForm(emptyFormState);
+    setForm(emptyTaskFormState);
     setIsDialogOpen(false);
     createMutation.reset();
     updateMutation.reset();
@@ -98,7 +76,7 @@ export function TaskAdmin() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const input = normalizeForm(form);
+    const input = normalizeTaskForm(form);
     if (editingTaskId) {
       updateMutation.mutate({ taskId: editingTaskId, input });
       return;
@@ -235,17 +213,6 @@ export function TaskAdmin() {
       </div>
     </section>
   );
-}
-
-function normalizeForm(form: TaskFormState): TaskInput {
-  const intervalDays = Number(form.intervalDaysText);
-
-  return {
-    title: form.title.trim(),
-    description: form.description?.trim() ? form.description.trim() : null,
-    dueDate: form.dueDate?.trim() ? form.dueDate.trim() : null,
-    intervalDays: Number.isFinite(intervalDays) && intervalDays > 0 ? intervalDays : emptyForm.intervalDays,
-  };
 }
 
 function StatusMessage({ children }: { children: ReactNode }) {

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Task } from '../types/task';
 import type { User } from '../types/user';
-import { getTasks, reassignTask, updateTaskStatus } from '../lib/api';
+import { getTasks, reassignTask, updateTaskStatus } from '../features/tasks/api';
 
 interface TaskListProps {
   currentUser: User;

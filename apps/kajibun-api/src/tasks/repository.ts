@@ -26,7 +26,7 @@ export interface TaskRepository {
   updateStatus(taskId: number, input: TaskStatusUpdate): Promise<void>;
   findUserById(userId: number): Promise<UserLookup | null>;
   findUserByEmail(email: string): Promise<UserLookup | null>;
-  recordEvent(event: TaskEventRecord): Promise<void>;
+  recordEvent(event: TaskEventRecord): Promise<number>;
 }
 
 export function createSqlTaskRepository(db: SqlClient): TaskRepository {
@@ -184,14 +184,20 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
       );
     },
 
-    async recordEvent(event: TaskEventRecord): Promise<void> {
-      await db.run(
+    async recordEvent(event: TaskEventRecord): Promise<number> {
+      const result = await db.run(
         `
         INSERT INTO task_events (task_id, event_type, actor_user_id, payload_json, created_at)
         VALUES (?, ?, ?, ?, datetime('now'))
         `,
         [event.taskId, event.eventType, event.actorUserId, JSON.stringify(event.payload)],
       );
+
+      if (!result.lastRowId) {
+        throw new Error("Failed to get inserted task event id");
+      }
+
+      return result.lastRowId;
     },
   };
 }

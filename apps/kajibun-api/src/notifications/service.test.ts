@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../tasks/domain";
 import type { TaskRepository } from "../tasks/repository";
-import type { TaskDomainEvent } from "../tasks/events";
+import type { PersistedTaskDomainEvent } from "../tasks/events";
 import type { PushSender } from "./push-sender";
 import type { NotificationRepository } from "./repository";
 import {
@@ -26,7 +26,8 @@ describe("notification service", () => {
     notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
     notificationRepository.subscriptionsByUserId.set(3, [createSubscription(11, 3)]);
     const pushSender = new RecordingPushSender();
-    const event: TaskDomainEvent = {
+    const event: PersistedTaskDomainEvent = {
+      eventId: 501,
       type: "TaskCompleted",
       taskId: 100,
       actorUserId: 1,
@@ -45,6 +46,10 @@ describe("notification service", () => {
     });
 
     expect(notificationRepository.jobs.map((job) => job.recipientUserId)).toEqual([2, 3]);
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual([
+      "task_completed:501:2",
+      "task_completed:501:3",
+    ]);
     expect(pushSender.sent.map((sent) => sent.subscription.userId)).toEqual([2, 3]);
     expect(pushSender.sent.map((sent) => sent.payload)).toEqual([
       {
@@ -58,6 +63,50 @@ describe("notification service", () => {
         url: "/",
       },
     ]);
+  });
+
+  test("sends task completion notifications for each persisted completion event", async () => {
+    const notificationRepository = new FakeNotificationRepository();
+    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
+    notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
+    const pushSender = new RecordingPushSender();
+    const firstEvent = createCompletedEvent({ eventId: 601, taskId: 100 });
+    const secondEvent = createCompletedEvent({ eventId: 602, taskId: 100 });
+
+    await handleTaskNotificationEvent(firstEvent, {
+      notificationRepository,
+      pushSender,
+    });
+    await handleTaskNotificationEvent(secondEvent, {
+      notificationRepository,
+      pushSender,
+    });
+
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual([
+      "task_completed:601:2",
+      "task_completed:602:2",
+    ]);
+    expect(pushSender.sent).toHaveLength(2);
+  });
+
+  test("does not resend task completion notifications when the same persisted event is processed again", async () => {
+    const notificationRepository = new FakeNotificationRepository();
+    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
+    notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
+    const pushSender = new RecordingPushSender();
+    const event = createCompletedEvent({ eventId: 701, taskId: 100 });
+
+    await handleTaskNotificationEvent(event, {
+      notificationRepository,
+      pushSender,
+    });
+    await handleTaskNotificationEvent(event, {
+      notificationRepository,
+      pushSender,
+    });
+
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual(["task_completed:701:2"]);
+    expect(pushSender.sent).toHaveLength(1);
   });
 
   test("does not send due-today notifications for completed tasks", async () => {
@@ -112,6 +161,53 @@ describe("notification service", () => {
       },
     ]);
   });
+
+  test("sends due notifications for overdue tasks until they are completed", async () => {
+    const taskRepository = new FakeTaskRepository([
+      createTask({
+        id: 1,
+        title: "玄関掃除",
+        status: "todo",
+        dueDate: "2026-07-09",
+      }),
+      createTask({
+        id: 2,
+        title: "買い出し",
+        status: "done",
+        dueDate: "2026-07-09",
+      }),
+      createTask({
+        id: 3,
+        title: "洗濯",
+        status: "todo",
+        dueDate: "2026-07-11",
+      }),
+    ]);
+    const notificationRepository = new FakeNotificationRepository();
+    notificationRepository.recipientsByAllowedEmail = [{ id: 2, email: "receiver@example.com" }];
+    notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
+    const pushSender = new RecordingPushSender();
+
+    const result = await sendDueTodayNotificationsUseCase(
+      taskRepository,
+      notificationRepository,
+      pushSender,
+      "receiver@example.com",
+      "18:00",
+      "2026-07-10",
+    );
+
+    expect(result).toEqual({ sent: 1, failed: 0, pending: 0 });
+    expect(notificationRepository.jobs.map((job) => job.taskId)).toEqual([1]);
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual(["task_due_today:2026-07-10:18:00:1:2"]);
+    expect(pushSender.sent.map((sent) => sent.payload)).toEqual([
+      {
+        title: "期限を過ぎた家事があります",
+        body: "「玄関掃除」の期限（2026-07-09）を過ぎています。",
+        url: "/",
+      },
+    ]);
+  });
 });
 
 class FakeNotificationRepository implements NotificationRepository {
@@ -146,6 +242,11 @@ class FakeNotificationRepository implements NotificationRepository {
     dedupeKey: string;
     payload: NotificationPayload;
   }): Promise<NotificationJob> {
+    const existingJob = this.jobs.find((job) => job.dedupeKey === input.dedupeKey);
+    if (existingJob) {
+      return existingJob;
+    }
+
     const job: NotificationJob = {
       id: this.jobs.length + 1,
       type: input.type,
@@ -171,14 +272,24 @@ class FakeNotificationRepository implements NotificationRepository {
 
   async markJobSent(jobId: number): Promise<void> {
     this.sentJobIds.push(jobId);
+    this.updateJobStatus(jobId, "sent");
   }
 
   async markJobPending(jobId: number): Promise<void> {
     this.pendingJobIds.push(jobId);
+    this.updateJobStatus(jobId, "pending");
   }
 
   async markJobFailed(jobId: number): Promise<void> {
     this.failedJobIds.push(jobId);
+    this.updateJobStatus(jobId, "failed");
+  }
+
+  private updateJobStatus(jobId: number, status: NotificationJob["status"]): void {
+    const job = this.jobs.find((item) => item.id === jobId);
+    if (job) {
+      job.status = status;
+    }
   }
 }
 
@@ -213,7 +324,9 @@ class FakeTaskRepository implements TaskRepository {
     return null;
   }
 
-  async recordEvent(): Promise<void> {}
+  async recordEvent(): Promise<number> {
+    return 1;
+  }
 }
 
 class RecordingPushSender implements PushSender {
@@ -240,6 +353,22 @@ function createTask(input: Pick<Task, "id" | "title" | "status" | "dueDate">): T
     assigneePictureUrl: null,
     createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
+  };
+}
+
+function createCompletedEvent(input: { eventId: number; taskId: number }): PersistedTaskDomainEvent {
+  return {
+    eventId: input.eventId,
+    type: "TaskCompleted",
+    taskId: input.taskId,
+    actorUserId: 1,
+    payload: {
+      title: "トイレ掃除",
+      fromStatus: "todo",
+      toStatus: "done",
+      clearedAssigneeUserId: null,
+      nextDueDate: "2026-07-11",
+    },
   };
 }
 

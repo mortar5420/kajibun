@@ -1,7 +1,7 @@
 import type { TaskRepository } from "./repository";
-import type { TaskDomainEvent } from "./events";
+import type { PersistedTaskDomainEvent, TaskDomainEvent } from "./events";
 
-export type TaskEventHandler = (event: TaskDomainEvent) => Promise<void>;
+export type TaskEventHandler = (event: PersistedTaskDomainEvent) => Promise<void>;
 
 export async function dispatchTaskEvents(
   repository: TaskRepository,
@@ -9,15 +9,19 @@ export async function dispatchTaskEvents(
   handlers: TaskEventHandler[] = [],
 ): Promise<void> {
   for (const event of events) {
-    await repository.recordEvent({
+    const eventId = await repository.recordEvent({
       taskId: event.taskId,
       actorUserId: event.actorUserId,
       eventType: event.type,
       payload: event.payload,
     });
+    const persistedEvent = {
+      ...event,
+      eventId,
+    };
 
     for (const handler of handlers) {
-      await handler(event);
+      await handler(persistedEvent);
     }
   }
 }

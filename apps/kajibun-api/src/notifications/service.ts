@@ -1,7 +1,7 @@
 import type { CurrentUser } from "../auth/types";
 import { parseAllowedEmails } from "../auth/policy";
 import { getTodayDateString } from "../shared/date";
-import type { TaskDomainEvent } from "../tasks/events";
+import type { PersistedTaskDomainEvent } from "../tasks/events";
 import type { TaskRepository } from "../tasks/repository";
 import type { NotificationJob, NotificationPayload, PushSubscriptionInput } from "./types";
 import type { NotificationRepository } from "./repository";
@@ -9,7 +9,7 @@ import type { PushSender } from "./push-sender";
 import { parsePushSubscriptionInput } from "./validation";
 
 const MAX_SEND_ATTEMPTS = 3;
-type TaskCompletedEvent = TaskDomainEvent & { type: "TaskCompleted" };
+type TaskCompletedEvent = PersistedTaskDomainEvent & { type: "TaskCompleted" };
 
 export async function subscribePushUseCase(
   repository: NotificationRepository,
@@ -28,7 +28,7 @@ export async function subscribePushUseCase(
 }
 
 export async function handleTaskNotificationEvent(
-  event: TaskDomainEvent,
+  event: PersistedTaskDomainEvent,
   options: {
     notificationRepository: NotificationRepository;
     pushSender: PushSender;
@@ -87,15 +87,16 @@ export async function sendDueTodayNotificationsUseCase(
   };
 
   for (const task of tasks) {
-    if (task.status !== "todo" || task.dueDate !== today) {
+    if (task.status !== "todo" || task.dueDate === null || task.dueDate > today) {
       continue;
     }
 
     const taskRecipients =
       task.assigneeUserId === null ? recipients : recipients.filter((recipient) => recipient.id === task.assigneeUserId);
+    const isOverdue = task.dueDate < today;
     const payload: NotificationPayload = {
-      title: "今日が期限の家事があります",
-      body: `「${task.title}」の期限は今日です。`,
+      title: isOverdue ? "期限を過ぎた家事があります" : "今日が期限の家事があります",
+      body: isOverdue ? `「${task.title}」の期限（${task.dueDate}）を過ぎています。` : `「${task.title}」の期限は今日です。`,
       url: "/",
     };
 
@@ -167,11 +168,8 @@ async function enqueueAndSendTaskCompletedNotifications(
       taskId: event.taskId,
       dedupeKey: [
         "task_completed",
-        event.taskId,
+        event.eventId,
         recipient.id,
-        event.payload.fromStatus,
-        event.payload.toStatus,
-        event.payload.nextDueDate ?? "none",
       ].join(":"),
       payload,
     });

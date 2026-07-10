@@ -64,3 +64,7 @@ export type TaskDomainEvent =
         nextDueDate: string | null;
       };
     };
+
+export type PersistedTaskDomainEvent = TaskDomainEvent & {
+  eventId: number;
+};

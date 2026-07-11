@@ -3,11 +3,11 @@ import { MantineProvider } from '@mantine/core';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import '@mantine/core/styles.css';
-import { PushNotificationButton } from './components/PushNotificationButton';
 import { TaskAdmin } from './components/TaskAdmin';
 import { TaskList } from './components/TaskList';
 import { ProfileDialog } from './features/profile/components/ProfileDialog';
 import { UserAvatar } from './features/profile/components/UserAvatar';
+import { PushNotificationButton } from './features/push-notifications/components/PushNotificationButton';
 import {
   deleteCurrentUserAvatar,
   getCurrentUser,

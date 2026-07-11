@@ -1,15 +1,23 @@
 import { QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MantineProvider, Modal } from '@mantine/core';
+import { MantineProvider } from '@mantine/core';
 import { useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import '@mantine/core/styles.css';
 import { PushNotificationButton } from './components/PushNotificationButton';
 import { TaskAdmin } from './components/TaskAdmin';
 import { TaskList } from './components/TaskList';
-import { deleteCurrentUserAvatar, getCurrentUser, getLoginUrl, logout, updateCurrentUserProfile, uploadCurrentUserAvatar } from './lib/api';
-import type { UserProfileInput } from './lib/api';
+import { ProfileDialog } from './features/profile/components/ProfileDialog';
+import { UserAvatar } from './features/profile/components/UserAvatar';
+import {
+  deleteCurrentUserAvatar,
+  getCurrentUser,
+  getLoginUrl,
+  logout,
+  updateCurrentUserProfile,
+  uploadCurrentUserAvatar,
+} from './features/profile/api';
+import type { ProfileSubmitInput } from './features/profile/model/profileForm';
 import { queryClient } from './lib/queryClient';
-import type { User } from './types/user';
 
 type Screen = 'today' | 'admin';
 
@@ -17,12 +25,6 @@ function AppContent() {
   const queryClient = useQueryClient();
   const [screen, setScreen] = useState<Screen>('today');
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState<UserProfileInput>({
-    name: '',
-  });
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
-  const [shouldDeleteAvatar, setShouldDeleteAvatar] = useState(false);
   const {
     data: currentUser,
     isLoading,
@@ -40,13 +42,13 @@ function AppContent() {
     },
   });
   const profileMutation = useMutation({
-    mutationFn: async (input: UserProfileInput) => {
-      let user = await updateCurrentUserProfile(input);
-      if (shouldDeleteAvatar) {
+    mutationFn: async (input: ProfileSubmitInput) => {
+      let user = await updateCurrentUserProfile(input.profile);
+      if (input.shouldDeleteAvatar) {
         user = (await deleteCurrentUserAvatar()) ?? user;
       }
-      if (avatarFile) {
-        user = await uploadCurrentUserAvatar(avatarFile);
+      if (input.avatarFile) {
+        user = await uploadCurrentUserAvatar(input.avatarFile);
       }
 
       return user;
@@ -55,47 +57,16 @@ function AppContent() {
       queryClient.setQueryData(['currentUser'], updatedUser);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setIsProfileDialogOpen(false);
-      clearAvatarSelection();
     },
   });
 
-  function openProfileDialog(user: User) {
-    setProfileForm({
-      name: user.name ?? '',
-    });
-    clearAvatarSelection();
+  function openProfileDialog() {
     profileMutation.reset();
     setIsProfileDialogOpen(true);
   }
 
-  function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    profileMutation.mutate(profileForm);
-  }
-
-  function handleAvatarFileChange(file: File | null) {
-    clearAvatarSelection();
-    if (!file) {
-      return;
-    }
-
-    setAvatarFile(file);
-    setShouldDeleteAvatar(false);
-    setAvatarPreviewUrl(URL.createObjectURL(file));
-  }
-
-  function clearAvatarSelection() {
-    if (avatarPreviewUrl) {
-      URL.revokeObjectURL(avatarPreviewUrl);
-    }
-    setAvatarFile(null);
-    setAvatarPreviewUrl(null);
-    setShouldDeleteAvatar(false);
-  }
-
   function closeProfileDialog() {
     setIsProfileDialogOpen(false);
-    clearAvatarSelection();
   }
 
   return (
@@ -110,7 +81,7 @@ function AppContent() {
               <>
                 <button
                   type="button"
-                  onClick={() => openProfileDialog(currentUser)}
+                  onClick={openProfileDialog}
                   className="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
                 >
                   <UserAvatar user={currentUser} />
@@ -138,70 +109,14 @@ function AppContent() {
         </header>
 
         {currentUser ? (
-          <Modal opened={isProfileDialogOpen} onClose={closeProfileDialog} title="プロフィール" centered>
-            <form onSubmit={handleProfileSubmit}>
-              <div className="grid gap-4">
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  ユーザ名
-                  <input
-                    value={profileForm.name}
-                    onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal text-slate-900"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  アイコン画像
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(event) => handleAvatarFileChange(event.target.files?.[0] ?? null)}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-normal text-slate-900"
-                  />
-                </label>
-                <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3">
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <UserAvatar
-                      user={{
-                        ...currentUser,
-                        pictureUrl: shouldDeleteAvatar ? undefined : (avatarPreviewUrl ?? currentUser.pictureUrl),
-                        name: profileForm.name,
-                      }}
-                    />
-                    <span>{avatarFile ? avatarFile.name : shouldDeleteAvatar ? 'アイコンを削除します' : '現在のアイコン'}</span>
-                  </div>
-                  {currentUser.pictureUrl || avatarFile ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearAvatarSelection();
-                        setShouldDeleteAvatar(true);
-                      }}
-                      className="text-sm font-medium text-red-600"
-                    >
-                      削除
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-5 flex gap-2">
-                <button
-                  type="submit"
-                  disabled={profileMutation.isPending}
-                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
-                >
-                  保存
-                </button>
-                <button
-                  type="button"
-                  onClick={closeProfileDialog}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm"
-                >
-                  キャンセル
-                </button>
-              </div>
-              {profileMutation.isError ? <p className="mt-3 text-sm text-red-600">プロフィールを保存できませんでした。</p> : null}
-            </form>
-          </Modal>
+          <ProfileDialog
+            opened={isProfileDialogOpen}
+            user={currentUser}
+            isSaving={profileMutation.isPending}
+            isError={profileMutation.isError}
+            onClose={closeProfileDialog}
+            onSubmit={(input) => profileMutation.mutate(input)}
+          />
         ) : null}
 
         {isLoading ? <StatusMessage>ログイン状態を確認しています。</StatusMessage> : null}
@@ -241,19 +156,6 @@ const inactiveTabClassName =
 
 function StatusMessage({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">{children}</div>;
-}
-
-function UserAvatar({ user }: { user: Pick<User, 'email' | 'name' | 'pictureUrl'> }) {
-  const label = user.name ?? user.email;
-  if (user.pictureUrl) {
-    return <img src={user.pictureUrl} alt="" className="h-6 w-6 rounded-full object-cover" referrerPolicy="no-referrer" />;
-  }
-
-  return (
-    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-      {label.slice(0, 1).toUpperCase()}
-    </span>
-  );
 }
 
 function App() {

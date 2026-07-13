@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Task } from '../types/task';
 import type { User } from '../types/user';
 import { completeTask, getTasks, reassignTask } from '../features/tasks/api';
@@ -13,6 +13,7 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
   const queryClient = useQueryClient();
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [showDueTodayOnly, setShowDueTodayOnly] = useState(false);
+  const [crackerKey, setCrackerKey] = useState(0);
   const {
     data: tasks = [],
     isLoading,
@@ -35,6 +36,7 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
     onSuccess: (updatedTask) => {
       updateTaskCache(queryClient, updatedTask);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setCrackerKey((current) => current + 1);
     },
   });
 
@@ -63,6 +65,7 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
   return (
     <section className="space-y-4">
+      {crackerKey > 0 ? <Cracker key={crackerKey} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -174,6 +177,37 @@ function AssigneeAvatar({ name, pictureUrl }: { name: string; pictureUrl: string
     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
       {name.slice(0, 1).toUpperCase()}
     </span>
+  );
+}
+
+function Cracker() {
+  const pieces = Array.from({ length: 28 }, (_, index) => {
+    const angle = -82 + index * 6;
+    const distance = 96 + (index % 5) * 16;
+    const delay = (index % 7) * 22;
+    const color = ['#f97316', '#facc15', '#22c55e', '#38bdf8', '#f472b6', '#a78bfa', '#ef4444'][index % 7];
+
+    return (
+      <span
+        key={index}
+        className="cracker-piece"
+        style={
+          {
+            '--angle': `${angle}deg`,
+            '--distance': `${distance}px`,
+            '--delay': `${delay}ms`,
+            '--color': color,
+          } as CSSProperties
+        }
+      />
+    );
+  });
+
+  return (
+    <div className="cracker-burst pointer-events-none fixed inset-x-0 top-24 z-50 mx-auto h-40 w-64" aria-hidden="true">
+      <div className="cracker-origin left-16">{pieces.slice(0, 14)}</div>
+      <div className="cracker-origin right-16">{pieces.slice(14)}</div>
+    </div>
   );
 }
 

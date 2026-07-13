@@ -124,6 +124,7 @@ describe('TaskList', () => {
 
     expect(await screen.findByText('相手')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '終わった' })).not.toBeInTheDocument();
+    expect(document.querySelector('.cracker-burst')).toBeInTheDocument();
   });
 });
 

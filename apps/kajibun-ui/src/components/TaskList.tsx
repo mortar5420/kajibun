@@ -9,11 +9,16 @@ interface TaskListProps {
   currentUser: User;
 }
 
+type CrackerEffect = {
+  taskId: string;
+  key: number;
+};
+
 export const TaskList = ({ currentUser }: TaskListProps) => {
   const queryClient = useQueryClient();
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [showDueTodayOnly, setShowDueTodayOnly] = useState(false);
-  const [crackerKey, setCrackerKey] = useState(0);
+  const [crackerEffect, setCrackerEffect] = useState<CrackerEffect | null>(null);
   const {
     data: tasks = [],
     isLoading,
@@ -36,7 +41,10 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
     onSuccess: (updatedTask) => {
       updateTaskCache(queryClient, updatedTask);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      setCrackerKey((current) => current + 1);
+      setCrackerEffect((current) => ({
+        taskId: updatedTask.id,
+        key: (current?.key ?? 0) + 1,
+      }));
     },
   });
 
@@ -65,7 +73,6 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
   return (
     <section className="space-y-4">
-      {crackerKey > 0 ? <Cracker key={crackerKey} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -103,7 +110,8 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
           const isAssignedToMe = task.assigneeUserId === currentUserId;
 
           return (
-            <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <article key={task.id} className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              {crackerEffect?.taskId === task.id ? <Cracker key={crackerEffect.key} /> : null}
               <div>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{task.title}</h2>
@@ -204,7 +212,7 @@ function Cracker() {
   });
 
   return (
-    <div className="cracker-burst pointer-events-none fixed inset-x-0 top-24 z-50 mx-auto h-40 w-64" aria-hidden="true">
+    <div className="cracker-burst pointer-events-none absolute inset-0 z-10" aria-hidden="true">
       <div className="cracker-origin left-16">{pieces.slice(0, 14)}</div>
       <div className="cracker-origin right-16">{pieces.slice(14)}</div>
     </div>

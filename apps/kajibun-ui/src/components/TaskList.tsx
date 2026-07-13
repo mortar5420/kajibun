@@ -12,6 +12,7 @@ interface TaskListProps {
 export const TaskList = ({ currentUser }: TaskListProps) => {
   const queryClient = useQueryClient();
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [showDueTodayOnly, setShowDueTodayOnly] = useState(false);
   const {
     data: tasks = [],
     isLoading,
@@ -38,7 +39,18 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
   });
 
   const currentUserId = String(currentUser.id);
-  const filteredTasks = showOnlyMine ? tasks.filter((task) => task.assigneeUserId === currentUserId) : tasks;
+  const today = getTodayDateString();
+  const filteredTasks = tasks.filter((task) => {
+    if (showOnlyMine && task.assigneeUserId !== currentUserId) {
+      return false;
+    }
+
+    if (showDueTodayOnly && task.dueDate !== today) {
+      return false;
+    }
+
+    return true;
+  });
   const isMutating = reassignMutation.isPending || completeMutation.isPending;
 
   if (isLoading) {
@@ -51,16 +63,27 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={showOnlyMine}
-            onChange={(event) => setShowOnlyMine(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-slate-900"
-          />
-          自担当のみ表示する
-        </label>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={showOnlyMine}
+              onChange={(event) => setShowOnlyMine(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900"
+            />
+            自担当のみ表示する
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={showDueTodayOnly}
+              onChange={(event) => setShowDueTodayOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900"
+            />
+            当日期限のみ表示する
+          </label>
+        </div>
         <button
           type="button"
           onClick={() => queryClient.invalidateQueries({ queryKey: ['tasks'] })}
@@ -97,7 +120,9 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
                     <span>未設定</span>
                   )}
                 </span>
-                <span>期限: {task.dueDate ?? '未設定'}</span>
+                <span className={task.dueDate === today ? 'font-semibold text-orange-600' : undefined}>
+                  期限: {formatDueDate(task.dueDate)}
+                </span>
                 <span>日数: {task.intervalDays}</span>
               </div>
 
@@ -156,4 +181,27 @@ function updateTaskCache(queryClient: ReturnType<typeof useQueryClient>, updated
   queryClient.setQueryData<Task[]>(['tasks'], (currentTasks) =>
     currentTasks?.map((task) => (task.id === updatedTask.id ? updatedTask : task)),
   );
+}
+
+function formatDueDate(dueDate: string | null): string {
+  if (!dueDate) {
+    return '未設定';
+  }
+
+  const date = parseDateString(dueDate);
+  return `${dueDate}（${['日', '月', '火', '水', '木', '金', '土'][date.getDay()]}）`;
+}
+
+function getTodayDateString(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateString(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }

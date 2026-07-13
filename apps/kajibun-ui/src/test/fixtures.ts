@@ -12,7 +12,6 @@ export const currentUser: User = {
 export function createTaskFixture(input: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
   return {
     description: null,
-    status: 'todo',
     dueDate: null,
     intervalDays: 1,
     assignee: null,

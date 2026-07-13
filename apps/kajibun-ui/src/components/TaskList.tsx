@@ -3,33 +3,11 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Task } from '../types/task';
 import type { User } from '../types/user';
-import { getTasks, reassignTask, updateTaskStatus } from '../features/tasks/api';
+import { completeTask, getTasks, reassignTask } from '../features/tasks/api';
 
 interface TaskListProps {
   currentUser: User;
 }
-
-const getStatusColor = (status: Task['status']) => {
-  switch (status) {
-    case 'todo':
-      return 'bg-slate-500';
-    case 'done':
-      return 'bg-green-600';
-    default:
-      return 'bg-slate-500';
-  }
-};
-
-const getStatusLabel = (status: Task['status']) => {
-  switch (status) {
-    case 'todo':
-      return '未着手';
-    case 'done':
-      return '完了';
-    default:
-      return '不明';
-  }
-};
 
 export const TaskList = ({ currentUser }: TaskListProps) => {
   const queryClient = useQueryClient();
@@ -51,8 +29,8 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
-  const statusMutation = useMutation({
-    mutationFn: ({ taskId, status }: { taskId: string; status: Task['status'] }) => updateTaskStatus(taskId, status),
+  const completeMutation = useMutation({
+    mutationFn: ({ taskId }: { taskId: string }) => completeTask(taskId),
     onSuccess: (updatedTask) => {
       updateTaskCache(queryClient, updatedTask);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -61,7 +39,7 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
   const currentUserId = String(currentUser.id);
   const filteredTasks = showOnlyMine ? tasks.filter((task) => task.assigneeUserId === currentUserId) : tasks;
-  const isMutating = reassignMutation.isPending || statusMutation.isPending;
+  const isMutating = reassignMutation.isPending || completeMutation.isPending;
 
   if (isLoading) {
     return <StatusMessage>かじ一覧を読み込んでいます。</StatusMessage>;
@@ -100,14 +78,11 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
 
           return (
             <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{task.title}</h2>
                   {task.description ? <p className="mt-2 text-sm text-slate-600">{task.description}</p> : null}
                 </div>
-                <span className={`${getStatusColor(task.status)} w-fit rounded-full px-3 py-1 text-sm text-white`}>
-                  {getStatusLabel(task.status)}
-                </span>
               </div>
 
               <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
@@ -145,11 +120,11 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
                 {isAssignedToMe ? (
                   <button
                     type="button"
-                    onClick={() => statusMutation.mutate({ taskId: task.id, status: task.status === 'done' ? 'todo' : 'done' })}
+                    onClick={() => completeMutation.mutate({ taskId: task.id })}
                     disabled={isMutating}
                     className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
                   >
-                    {task.status === 'done' ? '未着手に戻す' : '完了にする'}
+                    終わった
                   </button>
                 ) : null}
               </div>

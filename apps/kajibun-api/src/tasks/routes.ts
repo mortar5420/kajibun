@@ -16,7 +16,7 @@ import {
   updateTaskUseCase,
 } from "./service";
 import { parseCreateTaskInput, parseUpdateTaskInput } from "./validation";
-import type { TaskInput, TaskStatus } from "./types";
+import type { TaskInput } from "./types";
 
 export async function handleListTasks(request: Request, env: Env): Promise<Response> {
   const db = createD1Client(env.DB);
@@ -133,8 +133,7 @@ export async function handleCompleteTask(request: Request, env: Env, taskId: num
   if (actor instanceof Response) {
     return actor;
   }
-  const body = await readJsonBody<{ completed?: boolean; status?: TaskStatus }>(request);
-  const updatedTask = await completeTaskUseCase(taskRepository, actor, taskId, body, {
+  const updatedTask = await completeTaskUseCase(taskRepository, env.ALLOWED_GOOGLE_EMAILS, actor, taskId, {
     eventHandlers: [
       (event) =>
         handleTaskNotificationEvent(event, {

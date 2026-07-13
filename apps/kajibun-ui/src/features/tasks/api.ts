@@ -1,5 +1,5 @@
 import { request } from '../../shared/api/request';
-import type { Task, TaskStatus } from '../../types/task';
+import type { Task } from '../../types/task';
 
 export type TaskInput = {
   title: string;
@@ -46,10 +46,9 @@ export async function reassignTask(taskId: string, assigneeUserId: string | null
   return data.task;
 }
 
-export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task> {
+export async function completeTask(taskId: string): Promise<Task> {
   const data = await request<{ task: Task }>(`/tasks/${taskId}/complete`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
   });
 
   return data.task;

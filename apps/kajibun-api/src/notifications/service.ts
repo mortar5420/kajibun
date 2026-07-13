@@ -87,7 +87,7 @@ export async function sendDueTodayNotificationsUseCase(
   };
 
   for (const task of tasks) {
-    if (task.status !== "todo" || task.dueDate === null || task.dueDate > today) {
+    if (task.dueDate === null || task.dueDate > today) {
       continue;
     }
 

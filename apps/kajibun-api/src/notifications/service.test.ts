@@ -33,9 +33,8 @@ describe("notification service", () => {
       actorUserId: 1,
       payload: {
         title: "トイレ掃除",
-        fromStatus: "todo",
-        toStatus: "done",
-        clearedAssigneeUserId: null,
+        fromAssigneeUserId: 1,
+        toAssigneeUserId: 2,
         nextDueDate: "2026-07-11",
       },
     };
@@ -109,18 +108,16 @@ describe("notification service", () => {
     expect(pushSender.sent).toHaveLength(1);
   });
 
-  test("does not send due-today notifications for completed tasks", async () => {
+  test("sends due-today notifications for tasks with a due date", async () => {
     const taskRepository = new FakeTaskRepository([
       createTask({
         id: 1,
         title: "風呂掃除",
-        status: "todo",
         dueDate: "2026-07-10",
       }),
       createTask({
         id: 2,
         title: "ゴミ出し",
-        status: "done",
         dueDate: "2026-07-10",
       }),
     ]);
@@ -142,11 +139,13 @@ describe("notification service", () => {
       "2026-07-10",
     );
 
-    expect(result).toEqual({ sent: 2, failed: 0, pending: 0 });
-    expect(notificationRepository.jobs.map((job) => job.taskId)).toEqual([1, 1]);
+    expect(result).toEqual({ sent: 4, failed: 0, pending: 0 });
+    expect(notificationRepository.jobs.map((job) => job.taskId)).toEqual([1, 1, 2, 2]);
     expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual([
       "task_due_today:2026-07-10:12:00:1:2",
       "task_due_today:2026-07-10:12:00:1:3",
+      "task_due_today:2026-07-10:12:00:2:2",
+      "task_due_today:2026-07-10:12:00:2:3",
     ]);
     expect(pushSender.sent.map((sent) => sent.payload)).toEqual([
       {
@@ -159,27 +158,34 @@ describe("notification service", () => {
         body: "「風呂掃除」の期限は今日です。",
         url: "/",
       },
+      {
+        title: "今日が期限の家事があります",
+        body: "「ゴミ出し」の期限は今日です。",
+        url: "/",
+      },
+      {
+        title: "今日が期限の家事があります",
+        body: "「ゴミ出し」の期限は今日です。",
+        url: "/",
+      },
     ]);
   });
 
-  test("sends due notifications for overdue tasks until they are completed", async () => {
+  test("sends due notifications for overdue tasks", async () => {
     const taskRepository = new FakeTaskRepository([
       createTask({
         id: 1,
         title: "玄関掃除",
-        status: "todo",
         dueDate: "2026-07-09",
       }),
       createTask({
         id: 2,
         title: "買い出し",
-        status: "done",
         dueDate: "2026-07-09",
       }),
       createTask({
         id: 3,
         title: "洗濯",
-        status: "todo",
         dueDate: "2026-07-11",
       }),
     ]);
@@ -197,13 +203,21 @@ describe("notification service", () => {
       "2026-07-10",
     );
 
-    expect(result).toEqual({ sent: 1, failed: 0, pending: 0 });
-    expect(notificationRepository.jobs.map((job) => job.taskId)).toEqual([1]);
-    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual(["task_due_today:2026-07-10:18:00:1:2"]);
+    expect(result).toEqual({ sent: 2, failed: 0, pending: 0 });
+    expect(notificationRepository.jobs.map((job) => job.taskId)).toEqual([1, 2]);
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual([
+      "task_due_today:2026-07-10:18:00:1:2",
+      "task_due_today:2026-07-10:18:00:2:2",
+    ]);
     expect(pushSender.sent.map((sent) => sent.payload)).toEqual([
       {
         title: "期限を過ぎた家事があります",
         body: "「玄関掃除」の期限（2026-07-09）を過ぎています。",
+        url: "/",
+      },
+      {
+        title: "期限を過ぎた家事があります",
+        body: "「買い出し」の期限（2026-07-09）を過ぎています。",
         url: "/",
       },
     ]);
@@ -314,7 +328,7 @@ class FakeTaskRepository implements TaskRepository {
 
   async updateAssignee(): Promise<void> {}
 
-  async updateStatus(): Promise<void> {}
+  async updateCompletion(): Promise<void> {}
 
   async findUserById(): Promise<null> {
     return null;
@@ -322,6 +336,10 @@ class FakeTaskRepository implements TaskRepository {
 
   async findUserByEmail(): Promise<null> {
     return null;
+  }
+
+  async findUsersByEmails(): Promise<[]> {
+    return [];
   }
 
   async recordEvent(): Promise<number> {
@@ -339,12 +357,11 @@ class RecordingPushSender implements PushSender {
   }
 }
 
-function createTask(input: Pick<Task, "id" | "title" | "status" | "dueDate">): Task {
+function createTask(input: Pick<Task, "id" | "title" | "dueDate">): Task {
   return {
     id: input.id,
     title: input.title,
     description: null,
-    status: input.status,
     dueDate: input.dueDate,
     intervalDays: 1,
     assigneeUserId: null,
@@ -364,9 +381,8 @@ function createCompletedEvent(input: { eventId: number; taskId: number }): Persi
     actorUserId: 1,
     payload: {
       title: "トイレ掃除",
-      fromStatus: "todo",
-      toStatus: "done",
-      clearedAssigneeUserId: null,
+      fromAssigneeUserId: 1,
+      toAssigneeUserId: 2,
       nextDueDate: "2026-07-11",
     },
   };

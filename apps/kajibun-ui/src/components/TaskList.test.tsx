@@ -43,7 +43,7 @@ describe('TaskList', () => {
     expect(screen.queryByRole('heading', { name: '相手のかじ' })).not.toBeInTheDocument();
   });
 
-  test('assigns a task to the current user and then marks it done', async () => {
+  test('assigns a task to the current user and then hands it to the other user when completed', async () => {
     const user = userEvent.setup();
     const initialTask = createTaskFixture({ id: '1', title: '未担当のかじ' });
     const assignedTask = {
@@ -51,6 +51,12 @@ describe('TaskList', () => {
       assignee: '自分',
       assigneeUserId: currentUser.id,
       assigneePictureUrl: currentUser.pictureUrl ?? null,
+    };
+    const completedTask = {
+      ...assignedTask,
+      assignee: '相手',
+      assigneeUserId: '2',
+      assigneePictureUrl: null,
     };
     let tasks = [initialTask];
     server.use(
@@ -60,11 +66,9 @@ describe('TaskList', () => {
         tasks = [assignedTask];
         return HttpResponse.json({ task: assignedTask });
       }),
-      http.patch('/api/tasks/1/complete', async ({ request }) => {
-        expect(await request.json()).toEqual({ status: 'done' });
-        const task = createTaskFixture({ ...assignedTask, status: 'done' });
-        tasks = [task];
-        return HttpResponse.json({ task });
+      http.patch('/api/tasks/1/complete', async () => {
+        tasks = [completedTask];
+        return HttpResponse.json({ task: completedTask });
       }),
     );
 
@@ -74,9 +78,9 @@ describe('TaskList', () => {
     await user.click(screen.getByRole('button', { name: '自分が担当する' }));
 
     expect(await screen.findByText('自分')).toBeInTheDocument();
-    await user.click(await screen.findByRole('button', { name: '完了にする' }));
+    await user.click(await screen.findByRole('button', { name: '終わった' }));
 
-    expect(await screen.findByText('完了')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '未着手に戻す' })).toBeInTheDocument();
+    expect(await screen.findByText('相手')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '終わった' })).not.toBeInTheDocument();
   });
 });

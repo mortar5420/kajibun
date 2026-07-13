@@ -1,5 +1,3 @@
-import type { TaskStatus } from "./types";
-
 export type TaskDomainEvent =
   | {
       type: "TaskCreated";
@@ -39,7 +37,6 @@ export type TaskDomainEvent =
         description: string | null;
         dueDate: string | null;
         intervalDays: number;
-        status: TaskStatus;
         assigneeUserId: number | null;
       };
     }
@@ -53,14 +50,13 @@ export type TaskDomainEvent =
       };
     }
   | {
-      type: "TaskCompleted" | "TaskReopened";
+      type: "TaskCompleted";
       taskId: number;
       actorUserId: number;
       payload: {
         title: string;
-        fromStatus: TaskStatus;
-        toStatus: TaskStatus;
-        clearedAssigneeUserId: number | null;
+        fromAssigneeUserId: number | null;
+        toAssigneeUserId: number;
         nextDueDate: string | null;
       };
     };

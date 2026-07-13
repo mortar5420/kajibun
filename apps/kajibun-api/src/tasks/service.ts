@@ -1,12 +1,12 @@
 import type { CurrentUser } from "../auth/types";
-import { isAllowedEmail } from "../auth/policy";
+import { isAllowedEmail, parseAllowedEmails } from "../auth/policy";
 import { getTodayDateString } from "../shared/date";
 import { httpError } from "../shared/errors";
 import { applyTaskDetails, completeTask } from "./domain";
 import { dispatchTaskEvents } from "./event-handlers";
 import type { TaskEventHandler } from "./event-handlers";
 import type { TaskRepository } from "./repository";
-import type { TaskStatus, UserLookup } from "./types";
+import type { UserLookup } from "./types";
 import type { Task, TaskDetails } from "./domain";
 
 export type TaskDetailsInput = Partial<TaskDetails>;
@@ -14,11 +14,6 @@ export type TaskDetailsInput = Partial<TaskDetails>;
 export type AssigneeInput = {
   assigneeUserId?: number | string | null;
   assigneeEmail?: string | null;
-};
-
-export type CompleteTaskInput = {
-  completed?: boolean;
-  status?: TaskStatus;
 };
 
 export type TaskUseCaseOptions = {
@@ -95,7 +90,6 @@ export async function deleteTaskUseCase(repository: TaskRepository, actor: Curre
         description: task.description,
         dueDate: task.dueDate,
         intervalDays: task.intervalDays,
-        status: task.status,
         assigneeUserId: task.assigneeUserId,
       },
     },
@@ -132,32 +126,27 @@ export async function reassignTaskUseCase(
 
 export async function completeTaskUseCase(
   repository: TaskRepository,
+  allowedEmailsConfig: string | undefined,
   actor: CurrentUser,
   taskId: number,
-  input: CompleteTaskInput,
   options: TaskUseCaseOptions = {},
 ): Promise<Task> {
   const task = await getExistingTask(repository, taskId);
-  const nextStatus = input.status ?? (input.completed === false ? "todo" : "done");
-  if (nextStatus !== "todo" && nextStatus !== "done") {
-    throw httpError("invalid_status", "Task status must be todo or done", 400);
-  }
+  const nextAssignee = await resolveNextAssignee(repository, allowedEmailsConfig, actor.id);
+  const completion = completeTask(task, getTodayDateString(), nextAssignee.id);
 
-  const completion = completeTask(task, nextStatus, getTodayDateString());
-
-  await repository.updateStatus(taskId, completion);
+  await repository.updateCompletion(taskId, completion);
   await dispatchTaskEvents(
     repository,
     [
       {
-        type: nextStatus === "done" ? "TaskCompleted" : "TaskReopened",
+        type: "TaskCompleted",
         taskId,
         actorUserId: actor.id,
         payload: {
           title: task.title,
-          fromStatus: task.status,
-          toStatus: nextStatus,
-          clearedAssigneeUserId: completion.clearedAssigneeUserId,
+          fromAssigneeUserId: task.assigneeUserId,
+          toAssigneeUserId: nextAssignee.id,
           nextDueDate: completion.nextDueDate,
         },
       },
@@ -166,6 +155,22 @@ export async function completeTaskUseCase(
   );
 
   return getExistingTask(repository, taskId);
+}
+
+async function resolveNextAssignee(
+  repository: TaskRepository,
+  allowedEmailsConfig: string | undefined,
+  actorUserId: number,
+): Promise<UserLookup> {
+  const allowedEmails = Array.from(parseAllowedEmails(allowedEmailsConfig));
+  const users = await repository.findUsersByEmails(allowedEmails);
+  const nextAssignee = users.find((user) => user.id !== actorUserId);
+
+  if (!nextAssignee) {
+    throw httpError("next_assignee_not_found", "The other allowed user was not found", 404);
+  }
+
+  return nextAssignee;
 }
 
 async function resolveAssignee(

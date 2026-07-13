@@ -13,8 +13,8 @@ export {
   deleteTask,
   getTasks,
   reassignTask,
+  completeTask,
   updateTask,
-  updateTaskStatus,
 } from '../features/tasks/api';
 export type { TaskInput } from '../features/tasks/api';
 export { getVapidPublicKey, sendTestPush, subscribePush } from '../features/push-notifications/api';

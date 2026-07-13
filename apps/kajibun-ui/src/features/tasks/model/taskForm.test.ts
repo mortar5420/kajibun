@@ -42,7 +42,6 @@ describe('task form model', () => {
         id: '1',
         title: '洗濯',
         description: null,
-        status: 'todo',
         dueDate: null,
         intervalDays: 2,
         assignee: null,

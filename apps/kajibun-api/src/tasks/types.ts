@@ -1,10 +1,7 @@
-export type TaskStatus = "todo" | "done";
-
 export type TaskRow = {
   id: number;
   title: string;
   description: string | null;
-  status: TaskStatus;
   due_date: string | null;
   interval_days: number;
   assignee_user_id: number | null;
@@ -33,7 +30,6 @@ export type TaskResponse = {
   id: string;
   title: string;
   description: string;
-  status: TaskStatus;
   dueDate: string | null;
   intervalDays: number;
   assignee: string | null;

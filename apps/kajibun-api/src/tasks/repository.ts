@@ -1,12 +1,11 @@
 import type { SqlClient } from "../db/client";
 import { toTask } from "./mapper";
 import type { Task, TaskDetails } from "./domain";
-import type { TaskRow, TaskStatus, UserLookup } from "./types";
+import type { TaskRow, UserLookup } from "./types";
 
-export type TaskStatusUpdate = {
-  status: TaskStatus;
+export type TaskCompletionUpdate = {
   dueDate: string | null;
-  clearAssignee: boolean;
+  assigneeUserId: number;
 };
 
 export type TaskEventRecord = {
@@ -23,9 +22,10 @@ export interface TaskRepository {
   updateDetails(taskId: number, input: TaskDetails): Promise<void>;
   markDeleted(taskId: number): Promise<void>;
   updateAssignee(taskId: number, assigneeUserId: number | null): Promise<void>;
-  updateStatus(taskId: number, input: TaskStatusUpdate): Promise<void>;
+  updateCompletion(taskId: number, input: TaskCompletionUpdate): Promise<void>;
   findUserById(userId: number): Promise<UserLookup | null>;
   findUserByEmail(email: string): Promise<UserLookup | null>;
+  findUsersByEmails(emails: string[]): Promise<UserLookup[]>;
   recordEvent(event: TaskEventRecord): Promise<number>;
 }
 
@@ -38,7 +38,6 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
           tasks.id,
           tasks.title,
           tasks.description,
-          tasks.status,
           tasks.due_date,
           tasks.interval_days,
           tasks.assignee_user_id,
@@ -69,7 +68,6 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
           tasks.id,
           tasks.title,
           tasks.description,
-          tasks.status,
           tasks.due_date,
           tasks.interval_days,
           tasks.assignee_user_id,
@@ -93,8 +91,8 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
     async insert(input: TaskDetails): Promise<number> {
       const result = await db.run(
         `
-        INSERT INTO tasks (title, description, status, due_date, interval_days, assignee_user_id, created_at, updated_at)
-        VALUES (?, ?, 'todo', ?, ?, NULL, datetime('now'), datetime('now'))
+        INSERT INTO tasks (title, description, due_date, interval_days, assignee_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))
         `,
         [input.title, input.description, input.dueDate, input.intervalDays],
       );
@@ -139,26 +137,14 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
       );
     },
 
-    async updateStatus(taskId: number, input: TaskStatusUpdate): Promise<void> {
-      if (input.clearAssignee) {
-        await db.run(
-          `
-          UPDATE tasks
-          SET status = ?, assignee_user_id = NULL, updated_at = datetime('now')
-          WHERE id = ?
-          `,
-          [input.status, taskId],
-        );
-        return;
-      }
-
+    async updateCompletion(taskId: number, input: TaskCompletionUpdate): Promise<void> {
       await db.run(
         `
         UPDATE tasks
-        SET status = ?, due_date = ?, updated_at = datetime('now')
+        SET due_date = ?, assignee_user_id = ?, updated_at = datetime('now')
         WHERE id = ?
         `,
-        [input.status, input.dueDate, taskId],
+        [input.dueDate, input.assigneeUserId, taskId],
       );
     },
 
@@ -181,6 +167,24 @@ export function createSqlTaskRepository(db: SqlClient): TaskRepository {
         WHERE lower(email) = lower(?)
         `,
         [email],
+      );
+    },
+
+    async findUsersByEmails(emails: string[]): Promise<UserLookup[]> {
+      const normalizedEmails = emails.map((email) => email.toLowerCase());
+      if (normalizedEmails.length === 0) {
+        return [];
+      }
+
+      const placeholders = normalizedEmails.map(() => "?").join(", ");
+      return db.all<UserLookup>(
+        `
+        SELECT id, email
+        FROM users
+        WHERE lower(email) IN (${placeholders})
+        ORDER BY id ASC
+        `,
+        normalizedEmails,
       );
     },
 

@@ -1,11 +1,9 @@
 import { addDaysToDate } from "../shared/date";
-import type { TaskStatus } from "./types";
 
 export type Task = {
   id: number;
   title: string;
   description: string | null;
-  status: TaskStatus;
   dueDate: string | null;
   intervalDays: number;
   assigneeUserId: number | null;
@@ -34,32 +32,18 @@ export function applyTaskDetails(task: Task, input: Partial<TaskDetails>): TaskD
 
 export function completeTask(
   task: Task,
-  nextStatus: TaskStatus,
   today: string,
+  nextAssigneeUserId: number,
 ): {
-  status: TaskStatus;
   dueDate: string | null;
-  clearAssignee: boolean;
-  clearedAssigneeUserId: number | null;
+  assigneeUserId: number;
   nextDueDate: string | null;
 } {
-  if (nextStatus === "todo") {
-    return {
-      status: nextStatus,
-      dueDate: null,
-      clearAssignee: true,
-      clearedAssigneeUserId: task.assigneeUserId,
-      nextDueDate: null,
-    };
-  }
-
   const nextDueDate = addDaysToDate(today, task.intervalDays);
 
   return {
-    status: nextStatus,
     dueDate: nextDueDate,
-    clearAssignee: false,
-    clearedAssigneeUserId: null,
+    assigneeUserId: nextAssigneeUserId,
     nextDueDate,
   };
 }

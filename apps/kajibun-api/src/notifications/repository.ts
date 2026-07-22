@@ -28,7 +28,7 @@ type NotificationJobRow = {
 };
 
 export interface NotificationRepository {
-  upsertSubscription(input: {
+  replaceSubscriptionsForUser(input: {
     userId: number;
     endpoint: string;
     p256dh: string;
@@ -55,7 +55,15 @@ export interface NotificationRepository {
 
 export function createSqlNotificationRepository(db: SqlClient): NotificationRepository {
   return {
-    async upsertSubscription(input): Promise<void> {
+    async replaceSubscriptionsForUser(input): Promise<void> {
+      await db.run(
+        `
+        DELETE FROM push_subscriptions
+        WHERE user_id = ?
+        `,
+        [input.userId],
+      );
+
       await db.run(
         `
         INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at, updated_at, revoked_at)

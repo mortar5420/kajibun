@@ -41,7 +41,7 @@ app.use("*", async (c, next) => {
 
   await next();
 
-  return withCors(c.req.raw, c.res);
+  c.res = withCors(c.req.raw, c.res);
 });
 
 app.onError((error, c) => {

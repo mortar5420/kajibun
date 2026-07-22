@@ -5,6 +5,7 @@ import { getLoginUrl } from '../features/profile/api';
 import type { ProfileSubmitInput } from '../features/profile/model/profileForm';
 import { PushNotificationButton } from '../features/push-notifications/components/PushNotificationButton';
 import type { User } from '../types/user';
+import logoUrl from '../assets/logo.png';
 
 type Screen = 'today' | 'admin';
 
@@ -42,7 +43,7 @@ export function AppShell({
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">kajibun</h1>
+            <img src={logoUrl} alt="kajibun" className="h-8 w-auto" />
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {currentUser ? (

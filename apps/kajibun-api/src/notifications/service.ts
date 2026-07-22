@@ -18,7 +18,7 @@ export async function subscribePushUseCase(
   userAgent: string | null,
 ): Promise<void> {
   const subscription = parsePushSubscriptionInput(input);
-  await repository.upsertSubscription({
+  await repository.replaceSubscriptionsForUser({
     userId: actor.id,
     endpoint: subscription.endpoint,
     p256dh: subscription.p256dh,
@@ -195,12 +195,13 @@ async function sendNotificationJob(
 
   let hasRetryableError = false;
   let lastError = "push_send_failed";
+  let sentAtLeastOnce = false;
 
   for (const subscription of subscriptions) {
     const result = await pushSender.send(subscription, job.payload);
     if (result.ok) {
-      await repository.markJobSent(job.id);
-      return "sent";
+      sentAtLeastOnce = true;
+      continue;
     }
 
     lastError = result.error;
@@ -208,6 +209,11 @@ async function sendNotificationJob(
     if (result.revokeSubscription) {
       await repository.revokeSubscription(subscription.id);
     }
+  }
+
+  if (sentAtLeastOnce) {
+    await repository.markJobSent(job.id);
+    return "sent";
   }
 
   if (hasRetryableError && job.attempts + 1 < MAX_SEND_ATTEMPTS) {

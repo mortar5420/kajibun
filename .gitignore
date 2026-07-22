@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 .secrets*.env
+apps/kajibun-ui/public/apple-touch-icon.png
+apps/kajibun-ui/public/favicon.ico
+apps/kajibun-ui/public/icons/*.png

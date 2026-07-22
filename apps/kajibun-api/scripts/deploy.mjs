@@ -23,6 +23,10 @@ const targetName = env === 'prod' ? 'kajibun' : 'kajibun-dev';
 console.log(`Deploy target: ${targetName}`);
 
 if (!skipBuild) {
+  runCommand('bun', ['run', 'generate:icons', '--', '--required'], {
+    cwd: uiDir,
+  });
+
   runCommand('bun', ['run', 'build'], {
     cwd: uiDir,
     env: {

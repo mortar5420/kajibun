@@ -7,6 +7,7 @@ import type { NotificationRepository } from "./repository";
 import {
   handleTaskNotificationEvent,
   sendDueTodayNotificationsUseCase,
+  subscribePushUseCase,
 } from "./service";
 import type {
   NotificationJob,
@@ -17,6 +18,44 @@ import type {
 } from "./types";
 
 describe("notification service", () => {
+  test("replaces a user's existing subscriptions when subscribing push", async () => {
+    const notificationRepository = new FakeNotificationRepository();
+    notificationRepository.subscriptionsByUserId.set(1, [
+      createSubscription(1, 1),
+      createSubscription(3, 1),
+    ]);
+
+    await subscribePushUseCase(
+      notificationRepository,
+      {
+        id: 1,
+        googleSub: "google-sub-1",
+        email: "receiver@example.com",
+        name: "Receiver",
+        pictureUrl: undefined,
+      },
+      {
+        endpoint: "https://push.example.test/current",
+        keys: {
+          p256dh: "current-p256dh",
+          auth: "current-auth",
+        },
+      },
+      "current-agent",
+    );
+
+    expect(notificationRepository.subscriptionsByUserId.get(1)).toEqual([
+      {
+        id: 4,
+        userId: 1,
+        endpoint: "https://push.example.test/current",
+        p256dh: "current-p256dh",
+        auth: "current-auth",
+        userAgent: "current-agent",
+      },
+    ]);
+  });
+
   test("sends task completion notifications with the job payload to users except the actor", async () => {
     const notificationRepository = new FakeNotificationRepository();
     notificationRepository.recipientsExceptActor = [
@@ -86,6 +125,25 @@ describe("notification service", () => {
       "task_completed:602:2",
     ]);
     expect(pushSender.sent).toHaveLength(2);
+  });
+
+  test("sends a notification job to every active subscription for the recipient", async () => {
+    const notificationRepository = new FakeNotificationRepository();
+    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
+    notificationRepository.subscriptionsByUserId.set(2, [
+      createSubscription(10, 2),
+      createSubscription(12, 2),
+      createSubscription(14, 2),
+    ]);
+    const pushSender = new RecordingPushSender();
+
+    await handleTaskNotificationEvent(createCompletedEvent({ eventId: 603, taskId: 100 }), {
+      notificationRepository,
+      pushSender,
+    });
+
+    expect(pushSender.sent.map((sent) => sent.subscription.id)).toEqual([10, 12, 14]);
+    expect(notificationRepository.sentJobIds).toEqual([1]);
   });
 
   test("does not resend task completion notifications when the same persisted event is processed again", async () => {
@@ -233,7 +291,24 @@ class FakeNotificationRepository implements NotificationRepository {
   pendingJobIds: number[] = [];
   failedJobIds: number[] = [];
 
-  async upsertSubscription(): Promise<void> {}
+  async replaceSubscriptionsForUser(input: {
+    userId: number;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    userAgent: string | null;
+  }): Promise<void> {
+    this.subscriptionsByUserId.set(input.userId, [
+      {
+        id: this.nextSubscriptionId(input.userId),
+        userId: input.userId,
+        endpoint: input.endpoint,
+        p256dh: input.p256dh,
+        auth: input.auth,
+        userAgent: input.userAgent,
+      },
+    ]);
+  }
 
   async findUsersByEmails(): Promise<NotificationRecipient[]> {
     return this.recipientsByAllowedEmail;
@@ -304,6 +379,11 @@ class FakeNotificationRepository implements NotificationRepository {
     if (job) {
       job.status = status;
     }
+  }
+
+  private nextSubscriptionId(userId: number): number {
+    const subscriptions = this.subscriptionsByUserId.get(userId) ?? [];
+    return subscriptions.reduce((max, subscription) => Math.max(max, subscription.id), 0) + 1;
   }
 }
 

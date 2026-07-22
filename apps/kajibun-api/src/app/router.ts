@@ -1,15 +1,5 @@
 import { Hono } from "hono";
-import type { Context, Handler } from "hono";
-import {
-  handleCallback,
-  handleDeleteMeAvatar,
-  handleGetUserAvatar,
-  handleLogin,
-  handleLogout,
-  handleMe,
-  handleUpdateMe,
-  handleUploadMeAvatar,
-} from "../auth/routes";
+import { registerAuthRoutes } from "../auth/routes";
 import { corsPreflightResponse, withCors } from "../shared/cors";
 import { isHttpError, jsonError } from "../shared/errors";
 import { registerNotificationRoutes } from "../notifications/routes";
@@ -38,27 +28,21 @@ app.onError((error, c) => {
   return withCors(c.req.raw, jsonError("internal_error", "Internal server error", 500));
 });
 
-register("get", "/health", () =>
-  Response.json({
+app.get("/health", (c) =>
+  c.json({
+    ok: true,
+    service: "kajibun-api",
+  }),
+);
+app.get("/api/health", (c) =>
+  c.json({
     ok: true,
     service: "kajibun-api",
   }),
 );
 
-register("get", "/auth/login", handleLogin);
-register("get", "/auth/google/login", handleLogin);
-register("get", "/auth/callback", handleCallback);
-register("get", "/auth/google/callback", handleCallback);
-register("post", "/auth/logout", handleLogout);
-
-register("get", "/me", handleMe);
-register("patch", "/me", handleUpdateMe);
-register("post", "/me/avatar", handleUploadMeAvatar);
-register("delete", "/me/avatar", handleDeleteMeAvatar);
-
-register("get", "/users/:userId/avatar", (request, env, params) =>
-  handleGetUserAvatar(request, env, Number(params.userId)),
-);
+registerAuthRoutes(app);
+registerAuthRoutes(app, "/api");
 
 registerNotificationRoutes(app);
 registerNotificationRoutes(app, "/api");
@@ -79,37 +63,6 @@ app.notFound((c) => {
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
   return app.fetch(request, env);
-}
-
-type Method = "get" | "post" | "patch" | "delete";
-
-type RouteHandler = (
-  request: Request,
-  env: Env,
-  params: Record<string, string>,
-) => Response | Promise<Response>;
-
-function register(method: Method, path: string, handler: RouteHandler): void {
-  const honoHandler: Handler<AppHonoContext> = (c: Context<AppHonoContext>) => handler(c.req.raw, c.env, c.req.param());
-
-  switch (method) {
-    case "get":
-      app.get(path, honoHandler);
-      app.get(`/api${path}`, honoHandler);
-      break;
-    case "post":
-      app.post(path, honoHandler);
-      app.post(`/api${path}`, honoHandler);
-      break;
-    case "patch":
-      app.patch(path, honoHandler);
-      app.patch(`/api${path}`, honoHandler);
-      break;
-    case "delete":
-      app.delete(path, honoHandler);
-      app.delete(`/api${path}`, honoHandler);
-      break;
-  }
 }
 
 function defaultApiResponse(env: Env): Response {

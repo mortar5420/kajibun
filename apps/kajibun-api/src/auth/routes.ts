@@ -1,16 +1,16 @@
-import type { Env } from "../app/env";
-import { createD1Client } from "../adapters/persistence/d1";
+import type { Hono } from "hono";
 import { createR2ObjectStorage } from "../adapters/storage/r2";
+import { createDb, readJson, requireCurrentUser } from "../app/context";
+import type { AppContext, AppHonoContext } from "../app/context";
 import { clearCookie, parseCookies, serializeCookie, shouldUseSecureCookie } from "../shared/cookies";
 import { randomToken, timingSafeEqualString } from "../shared/crypto";
 import { isAllowedUiOrigin } from "../shared/cors";
-import { httpError, jsonError, readJsonBody } from "../shared/errors";
+import { httpError, jsonError } from "../shared/errors";
 import { avatarResponse, getUserPictureUrl, parseAvatarUpload, storeAvatar } from "./avatar";
 import { GOOGLE_AUTH_URL, exchangeCodeForToken, verifyGoogleIdToken } from "./google-oidc";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, createSignedSessionCookie } from "./session";
 import { clearUserAvatar, findUserById, updateUserAvatar, updateUserProfile, upsertUser } from "./repository";
 import type { UserRecord } from "./repository";
-import { getCurrentUserOrResponse } from "./http";
 import { getOidcConfig } from "./service";
 import type { SessionPayload } from "./types";
 
@@ -27,13 +27,28 @@ export function isCallbackPath(pathname: string): boolean {
   return pathname === "/auth/callback" || pathname === "/auth/google/callback";
 }
 
-export async function handleLogin(request: Request, env: Env): Promise<Response> {
-  const config = getOidcConfig(env);
+export function registerAuthRoutes(app: Hono<AppHonoContext>, prefix = ""): void {
+  app.get(`${prefix}/auth/login`, handleLogin);
+  app.get(`${prefix}/auth/google/login`, handleLogin);
+  app.get(`${prefix}/auth/callback`, handleCallback);
+  app.get(`${prefix}/auth/google/callback`, handleCallback);
+  app.post(`${prefix}/auth/logout`, handleLogout);
+
+  app.get(`${prefix}/me`, handleMe);
+  app.patch(`${prefix}/me`, handleUpdateMe);
+  app.post(`${prefix}/me/avatar`, handleUploadMeAvatar);
+  app.delete(`${prefix}/me/avatar`, handleDeleteMeAvatar);
+
+  app.get(`${prefix}/users/:userId/avatar`, handleGetUserAvatar);
+}
+
+async function handleLogin(c: AppContext): Promise<Response> {
+  const config = getOidcConfig(c.env);
   if (!config) {
     return missingOidcConfigResponse();
   }
 
-  const url = new URL(request.url);
+  const url = new URL(c.req.url);
   const origin = url.origin;
   const apiPrefix = getApiPrefix(url.pathname);
   const secureCookie = shouldUseSecureCookie(url);
@@ -65,13 +80,13 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   });
 }
 
-export async function handleCallback(request: Request, env: Env): Promise<Response> {
-  const config = getOidcConfig(env);
+async function handleCallback(c: AppContext): Promise<Response> {
+  const config = getOidcConfig(c.env);
   if (!config) {
     return missingOidcConfigResponse();
   }
 
-  const url = new URL(request.url);
+  const url = new URL(c.req.url);
   const apiPrefix = getApiPrefix(url.pathname);
   const secureCookie = shouldUseSecureCookie(url);
   const code = url.searchParams.get("code");
@@ -86,7 +101,7 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
     return jsonError("invalid_callback", "Missing code or state", 400);
   }
 
-  const cookies = parseCookies(request.headers.get("Cookie"));
+  const cookies = parseCookies(c.req.header("Cookie") ?? null);
   if (!timingSafeEqualString(state, cookies[STATE_COOKIE] ?? "")) {
     return jsonError("invalid_state", "OAuth state does not match", 400);
   }
@@ -114,7 +129,7 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
     return jsonError("forbidden_user", "This Google account is not allowed", 403);
   }
 
-  const db = createD1Client(env.DB);
+  const db = createDb(c);
   await upsertUser(db, claims, email);
 
   const session: SessionPayload = {
@@ -139,10 +154,10 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
   });
 }
 
-export function handleLogout(request: Request): Response {
-  const secureCookie = shouldUseSecureCookie(new URL(request.url));
+function handleLogout(c: AppContext): Response {
+  const secureCookie = shouldUseSecureCookie(new URL(c.req.url));
 
-  return Response.json(
+  return c.json(
     { ok: true },
     {
       headers: {
@@ -152,16 +167,11 @@ export function handleLogout(request: Request): Response {
   );
 }
 
-export async function handleMe(request: Request, env: Env): Promise<Response> {
-  const user = await getCurrentUserOrResponse(request, {
-    db: createD1Client(env.DB),
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (user instanceof Response) {
-    return user;
-  }
+async function handleMe(c: AppContext): Promise<Response> {
+  const db = createDb(c);
+  const user = await requireCurrentUser(c, db);
 
-  return Response.json({
+  return c.json({
     user: {
       id: user.id,
       sub: user.googleSub,
@@ -172,44 +182,32 @@ export async function handleMe(request: Request, env: Env): Promise<Response> {
   });
 }
 
-export async function handleUpdateMe(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const user = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (user instanceof Response) {
-    return user;
-  }
+async function handleUpdateMe(c: AppContext): Promise<Response> {
+  const db = createDb(c);
+  const user = await requireCurrentUser(c, db);
 
-  const input = parseProfileInput(await readJsonBody<{ name?: unknown }>(request));
+  const input = parseProfileInput(await readJson<{ name?: unknown }>(c));
   const updatedUser = await updateUserProfile(db, user.id, input);
   if (!updatedUser) {
     throw httpError("user_not_found", "User not found", 404);
   }
 
-  return Response.json({
+  return c.json({
     user: toUserResponse(updatedUser),
   });
 }
 
-export async function handleUploadMeAvatar(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+async function handleUploadMeAvatar(c: AppContext): Promise<Response> {
+  const db = createDb(c);
+  const actor = await requireCurrentUser(c, db);
 
   const currentUser = await findUserById(db, actor.id);
   if (!currentUser) {
     throw httpError("user_not_found", "User not found", 404);
   }
 
-  const upload = await parseAvatarUpload(await request.formData(), actor);
-  const storage = createR2ObjectStorage(env.AVATARS);
+  const upload = await parseAvatarUpload(await c.req.formData(), actor);
+  const storage = createR2ObjectStorage(c.env.AVATARS);
   await storeAvatar(storage, upload);
 
   const updatedUser = await updateUserAvatar(db, actor.id, {
@@ -224,20 +222,14 @@ export async function handleUploadMeAvatar(request: Request, env: Env): Promise<
     await storage.delete(currentUser.avatar_object_key);
   }
 
-  return Response.json({
+  return c.json({
     user: toUserResponse(updatedUser),
   });
 }
 
-export async function handleDeleteMeAvatar(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+async function handleDeleteMeAvatar(c: AppContext): Promise<Response> {
+  const db = createDb(c);
+  const actor = await requireCurrentUser(c, db);
 
   const currentUser = await findUserById(db, actor.id);
   if (!currentUser) {
@@ -246,30 +238,25 @@ export async function handleDeleteMeAvatar(request: Request, env: Env): Promise<
 
   const updatedUser = await clearUserAvatar(db, actor.id);
   if (currentUser.avatar_object_key) {
-    await createR2ObjectStorage(env.AVATARS).delete(currentUser.avatar_object_key);
+    await createR2ObjectStorage(c.env.AVATARS).delete(currentUser.avatar_object_key);
   }
 
-  return Response.json({
+  return c.json({
     user: updatedUser ? toUserResponse(updatedUser) : null,
   });
 }
 
-export async function handleGetUserAvatar(request: Request, env: Env, userId: number): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+async function handleGetUserAvatar(c: AppContext): Promise<Response> {
+  const db = createDb(c);
+  await requireCurrentUser(c, db);
 
+  const userId = Number(c.req.param("userId"));
   const user = await findUserById(db, userId);
   if (!user) {
     throw httpError("user_not_found", "User not found", 404);
   }
 
-  return avatarResponse(createR2ObjectStorage(env.AVATARS), user);
+  return avatarResponse(createR2ObjectStorage(c.env.AVATARS), user);
 }
 
 function parseProfileInput(input: { name?: unknown }): {

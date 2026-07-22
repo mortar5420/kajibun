@@ -80,6 +80,27 @@ describe("handleRequest", () => {
       },
     });
   });
+
+  test("keeps task routes available with and without the /api prefix", async () => {
+    const env = createTestEnv();
+    const response = await handleRequest(new Request("https://api.example.test/tasks"), env);
+    const prefixedResponse = await handleRequest(new Request("https://api.example.test/api/tasks"), env);
+
+    expect(response.status).toBe(401);
+    expect(prefixedResponse.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "unauthorized",
+        message: "Not logged in",
+      },
+    });
+    expect(await prefixedResponse.json()).toEqual({
+      error: {
+        code: "unauthorized",
+        message: "Not logged in",
+      },
+    });
+  });
 });
 
 function createTestEnv(): Env {

@@ -1,10 +1,9 @@
-import { getCurrentUserOrResponse } from "../auth/http";
+import { Hono } from "hono";
 import { createWebPushSender } from "../adapters/push/web-push";
-import { createD1Client } from "../adapters/persistence/d1";
-import type { Env } from "../app/env";
+import { createDb, readJson, requireCurrentUser } from "../app/context";
+import type { AppHonoContext } from "../app/context";
 import { createSqlNotificationRepository } from "../notifications/repository";
 import { handleTaskNotificationEvent } from "../notifications/service";
-import { readJsonBody } from "../shared/errors";
 import { toTaskResponse } from "./mapper";
 import { createSqlTaskRepository } from "./repository";
 import {
@@ -18,40 +17,30 @@ import {
 import { parseCreateTaskInput, parseUpdateTaskInput } from "./validation";
 import type { TaskInput } from "./types";
 
-export async function handleListTasks(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
+export const tasksRoutes = new Hono<AppHonoContext>();
+
+tasksRoutes.get("/", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
-  const user = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (user instanceof Response) {
-    return user;
-  }
+  await requireCurrentUser(c, db);
 
   const tasks = await listTaskUseCase(taskRepository);
 
-  return Response.json({
+  return c.json({
     tasks: tasks.map(toTaskResponse),
   });
-}
+});
 
-export async function handleCreateTask(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
+tasksRoutes.post("/", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+  const actor = await requireCurrentUser(c, db);
 
-  const body = await readJsonBody<TaskInput>(request);
+  const body = await readJson<TaskInput>(c);
   const input = parseCreateTaskInput(body);
   const task = await createTaskUseCase(taskRepository, actor, input);
 
-  return Response.json(
+  return c.json(
     {
       task: toTaskResponse(task),
     },
@@ -59,81 +48,61 @@ export async function handleCreateTask(request: Request, env: Env): Promise<Resp
       status: 201,
     },
   );
-}
+});
 
-export async function handleUpdateTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const db = createD1Client(env.DB);
+tasksRoutes.patch("/:taskId", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+  const actor = await requireCurrentUser(c, db);
 
-  const body = await readJsonBody<TaskInput>(request);
+  const taskId = Number(c.req.param("taskId"));
+  const body = await readJson<TaskInput>(c);
   const input = parseUpdateTaskInput(body);
   const updatedTask = await updateTaskUseCase(taskRepository, actor, taskId, input);
 
-  return Response.json({
+  return c.json({
     task: toTaskResponse(updatedTask),
   });
-}
+});
 
-export async function handleDeleteTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const db = createD1Client(env.DB);
+tasksRoutes.delete("/:taskId", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
+  const actor = await requireCurrentUser(c, db);
 
+  const taskId = Number(c.req.param("taskId"));
   await deleteTaskUseCase(taskRepository, actor, taskId);
 
-  return Response.json({
+  return c.json({
     ok: true,
   });
-}
+});
 
-export async function handleReassignTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const db = createD1Client(env.DB);
+tasksRoutes.patch("/:taskId/assignee", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
-  const body = await readJsonBody<{ assigneeUserId?: number | string | null; assigneeEmail?: string | null }>(request);
-  const updatedTask = await reassignTaskUseCase(taskRepository, env.ALLOWED_GOOGLE_EMAILS, actor, taskId, body);
+  const actor = await requireCurrentUser(c, db);
+  const taskId = Number(c.req.param("taskId"));
+  const body = await readJson<{ assigneeUserId?: number | string | null; assigneeEmail?: string | null }>(c);
+  const updatedTask = await reassignTaskUseCase(taskRepository, c.env.ALLOWED_GOOGLE_EMAILS, actor, taskId, body);
 
-  return Response.json({
+  return c.json({
     task: toTaskResponse(updatedTask),
   });
-}
+});
 
-export async function handleCompleteTask(request: Request, env: Env, taskId: number): Promise<Response> {
-  const db = createD1Client(env.DB);
+tasksRoutes.patch("/:taskId/complete", async (c) => {
+  const db = createDb(c);
   const taskRepository = createSqlTaskRepository(db);
   const notificationRepository = createSqlNotificationRepository(db);
   const pushSender = createWebPushSender({
-    publicKey: env.VAPID_PUBLIC_KEY,
-    privateKey: env.VAPID_PRIVATE_KEY,
-    subject: env.VAPID_SUBJECT,
+    publicKey: c.env.VAPID_PUBLIC_KEY,
+    privateKey: c.env.VAPID_PRIVATE_KEY,
+    subject: c.env.VAPID_SUBJECT,
   });
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
-  const updatedTask = await completeTaskUseCase(taskRepository, env.ALLOWED_GOOGLE_EMAILS, actor, taskId, {
+  const actor = await requireCurrentUser(c, db);
+  const taskId = Number(c.req.param("taskId"));
+  const updatedTask = await completeTaskUseCase(taskRepository, c.env.ALLOWED_GOOGLE_EMAILS, actor, taskId, {
     eventHandlers: [
       (event) =>
         handleTaskNotificationEvent(event, {
@@ -143,7 +112,7 @@ export async function handleCompleteTask(request: Request, env: Env, taskId: num
     ],
   });
 
-  return Response.json({
+  return c.json({
     task: toTaskResponse(updatedTask),
   });
-}
+});

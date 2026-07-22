@@ -2,10 +2,10 @@ export type HttpErrorLike = {
   code: string;
   message: string;
   status: number;
-};
+} & Error;
 
 export function httpError(code: string, message: string, status: number): HttpErrorLike {
-  return { code, message, status };
+  return Object.assign(new Error(message), { code, status });
 }
 
 export function isHttpError(error: unknown): error is HttpErrorLike {

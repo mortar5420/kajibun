@@ -18,21 +18,11 @@ import {
   handleSendTestPush,
   handleSubscribePush,
 } from "../notifications/routes";
-import {
-  handleCompleteTask,
-  handleCreateTask,
-  handleDeleteTask,
-  handleListTasks,
-  handleReassignTask,
-  handleUpdateTask,
-} from "../tasks/routes";
+import { tasksRoutes } from "../tasks/routes";
+import type { AppHonoContext } from "./context";
 import type { Env } from "./env";
 
-type HonoContext = {
-  Bindings: Env;
-};
-
-const app = new Hono<HonoContext>();
+const app = new Hono<AppHonoContext>();
 
 app.use("*", async (c, next) => {
   if (c.req.method === "OPTIONS") {
@@ -80,16 +70,8 @@ register("post", "/push-subscriptions", handleSubscribePush);
 register("get", "/notifications/latest", handleGetLatestNotification);
 register("post", "/push/test", handleSendTestPush);
 
-register("get", "/tasks", handleListTasks);
-register("post", "/tasks", handleCreateTask);
-register("patch", "/tasks/:taskId", (request, env, params) => handleUpdateTask(request, env, Number(params.taskId)));
-register("delete", "/tasks/:taskId", (request, env, params) => handleDeleteTask(request, env, Number(params.taskId)));
-register("patch", "/tasks/:taskId/assignee", (request, env, params) =>
-  handleReassignTask(request, env, Number(params.taskId)),
-);
-register("patch", "/tasks/:taskId/complete", (request, env, params) =>
-  handleCompleteTask(request, env, Number(params.taskId)),
-);
+app.route("/tasks", tasksRoutes);
+app.route("/api/tasks", tasksRoutes);
 
 app.get("/api", (c) => defaultApiResponse(c.env));
 app.all("/api/*", (c) => defaultApiResponse(c.env));
@@ -115,7 +97,7 @@ type RouteHandler = (
 ) => Response | Promise<Response>;
 
 function register(method: Method, path: string, handler: RouteHandler): void {
-  const honoHandler: Handler<HonoContext> = (c: Context<HonoContext>) => handler(c.req.raw, c.env, c.req.param());
+  const honoHandler: Handler<AppHonoContext> = (c: Context<AppHonoContext>) => handler(c.req.raw, c.env, c.req.param());
 
   switch (method) {
     case "get":

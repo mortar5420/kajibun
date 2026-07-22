@@ -12,12 +12,7 @@ import {
 } from "../auth/routes";
 import { corsPreflightResponse, withCors } from "../shared/cors";
 import { isHttpError, jsonError } from "../shared/errors";
-import {
-  handleGetLatestNotification,
-  handleGetVapidPublicKey,
-  handleSendTestPush,
-  handleSubscribePush,
-} from "../notifications/routes";
+import { registerNotificationRoutes } from "../notifications/routes";
 import { tasksRoutes } from "../tasks/routes";
 import type { AppHonoContext } from "./context";
 import type { Env } from "./env";
@@ -65,10 +60,8 @@ register("get", "/users/:userId/avatar", (request, env, params) =>
   handleGetUserAvatar(request, env, Number(params.userId)),
 );
 
-register("get", "/push/vapid-public-key", (_request, env) => handleGetVapidPublicKey(env));
-register("post", "/push-subscriptions", handleSubscribePush);
-register("get", "/notifications/latest", handleGetLatestNotification);
-register("post", "/push/test", handleSendTestPush);
+registerNotificationRoutes(app);
+registerNotificationRoutes(app, "/api");
 
 app.route("/tasks", tasksRoutes);
 app.route("/api/tasks", tasksRoutes);

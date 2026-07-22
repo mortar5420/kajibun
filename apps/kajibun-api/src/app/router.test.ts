@@ -101,9 +101,29 @@ describe("handleRequest", () => {
       },
     });
   });
+
+  test("keeps public push routes available with and without the /api prefix", async () => {
+    const env = createTestEnv({
+      VAPID_PUBLIC_KEY: "test-vapid-key",
+    });
+    const response = await handleRequest(new Request("https://api.example.test/push/vapid-public-key"), env);
+    const prefixedResponse = await handleRequest(
+      new Request("https://api.example.test/api/push/vapid-public-key"),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(prefixedResponse.status).toBe(200);
+    expect(await response.json()).toEqual({
+      publicKey: "test-vapid-key",
+    });
+    expect(await prefixedResponse.json()).toEqual({
+      publicKey: "test-vapid-key",
+    });
+  });
 });
 
-function createTestEnv(): Env {
+function createTestEnv(overrides: Partial<Env> = {}): Env {
   const assets: Fetcher = {
     fetch: (request: Request) => {
       const pathname = new URL(request.url).pathname;
@@ -118,5 +138,6 @@ function createTestEnv(): Env {
     ASSETS: assets,
     DB: {} as D1Database,
     AVATARS: {} as R2Bucket,
+    ...overrides,
   };
 }

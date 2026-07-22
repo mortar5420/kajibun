@@ -1,75 +1,56 @@
+import type { Hono } from "hono";
 import { createWebPushSender } from "../adapters/push/web-push";
-import { createD1Client } from "../adapters/persistence/d1";
-import type { Env } from "../app/env";
-import { getCurrentUserOrResponse } from "../auth/http";
-import { readJsonBody } from "../shared/errors";
+import { createDb, readJson, requireCurrentUser } from "../app/context";
+import type { AppHonoContext } from "../app/context";
 import { createSqlNotificationRepository } from "./repository";
 import { getLatestNotificationUseCase, sendTestPushNotificationUseCase, subscribePushUseCase } from "./service";
 import type { PushSubscriptionInput } from "./types";
 
-export function handleGetVapidPublicKey(env: Env): Response {
-  return Response.json({
-    publicKey: env.VAPID_PUBLIC_KEY ?? null,
+export function registerNotificationRoutes(app: Hono<AppHonoContext>, prefix = ""): void {
+  app.get(`${prefix}/push/vapid-public-key`, (c) =>
+    c.json({
+      publicKey: c.env.VAPID_PUBLIC_KEY ?? null,
+    }),
+  );
+
+  app.post(`${prefix}/push-subscriptions`, async (c) => {
+    const db = createDb(c);
+    const actor = await requireCurrentUser(c, db);
+    const repository = createSqlNotificationRepository(db);
+    const input = await readJson<PushSubscriptionInput>(c);
+
+    await subscribePushUseCase(repository, actor, input, c.req.header("user-agent") ?? null);
+
+    return c.json({
+      ok: true,
+    });
   });
-}
 
-export async function handleSubscribePush(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
+  app.get(`${prefix}/notifications/latest`, async (c) => {
+    const db = createDb(c);
+    const actor = await requireCurrentUser(c, db);
+    const repository = createSqlNotificationRepository(db);
+    const notification = await getLatestNotificationUseCase(repository, actor);
+
+    return c.json({
+      notification,
+    });
   });
-  if (actor instanceof Response) {
-    return actor;
-  }
 
-  const repository = createSqlNotificationRepository(db);
-  const input = await readJsonBody<PushSubscriptionInput>(request);
-  await subscribePushUseCase(repository, actor, input, request.headers.get("user-agent"));
+  app.post(`${prefix}/push/test`, async (c) => {
+    const db = createDb(c);
+    const actor = await requireCurrentUser(c, db);
+    const repository = createSqlNotificationRepository(db);
+    const pushSender = createWebPushSender({
+      publicKey: c.env.VAPID_PUBLIC_KEY,
+      privateKey: c.env.VAPID_PRIVATE_KEY,
+      subject: c.env.VAPID_SUBJECT,
+    });
+    const status = await sendTestPushNotificationUseCase(repository, pushSender, actor);
 
-  return Response.json({
-    ok: true,
-  });
-}
-
-export async function handleGetLatestNotification(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
-
-  const repository = createSqlNotificationRepository(db);
-  const notification = await getLatestNotificationUseCase(repository, actor);
-
-  return Response.json({
-    notification,
-  });
-}
-
-export async function handleSendTestPush(request: Request, env: Env): Promise<Response> {
-  const db = createD1Client(env.DB);
-  const actor = await getCurrentUserOrResponse(request, {
-    db,
-    sessionSecret: env.SESSION_SECRET,
-  });
-  if (actor instanceof Response) {
-    return actor;
-  }
-
-  const repository = createSqlNotificationRepository(db);
-  const pushSender = createWebPushSender({
-    publicKey: env.VAPID_PUBLIC_KEY,
-    privateKey: env.VAPID_PRIVATE_KEY,
-    subject: env.VAPID_SUBJECT,
-  });
-  const status = await sendTestPushNotificationUseCase(repository, pushSender, actor);
-
-  return Response.json({
-    ok: status === "sent",
-    status,
+    return c.json({
+      ok: status === "sent",
+      status,
+    });
   });
 }

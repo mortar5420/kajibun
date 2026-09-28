@@ -56,12 +56,8 @@ describe("notification service", () => {
     ]);
   });
 
-  test("sends task completion notifications with the job payload to users except the actor", async () => {
+  test("sends a task completion notification only to the next assignee", async () => {
     const notificationRepository = new FakeNotificationRepository();
-    notificationRepository.recipientsExceptActor = [
-      { id: 2, email: "receiver@example.com" },
-      { id: 3, email: "another@example.com" },
-    ];
     notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
     notificationRepository.subscriptionsByUserId.set(3, [createSubscription(11, 3)]);
     const pushSender = new RecordingPushSender();
@@ -83,18 +79,10 @@ describe("notification service", () => {
       pushSender,
     });
 
-    expect(notificationRepository.jobs.map((job) => job.recipientUserId)).toEqual([2, 3]);
-    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual([
-      "task_completed:501:2",
-      "task_completed:501:3",
-    ]);
-    expect(pushSender.sent.map((sent) => sent.subscription.userId)).toEqual([2, 3]);
+    expect(notificationRepository.jobs.map((job) => job.recipientUserId)).toEqual([2]);
+    expect(notificationRepository.jobs.map((job) => job.dedupeKey)).toEqual(["task_completed:501:2"]);
+    expect(pushSender.sent.map((sent) => sent.subscription.userId)).toEqual([2]);
     expect(pushSender.sent.map((sent) => sent.payload)).toEqual([
-      {
-        title: "「トイレ掃除」が完了しました",
-        body: "家事が完了しました。 次回の期限は2026-07-11です。",
-        url: "/",
-      },
       {
         title: "「トイレ掃除」が完了しました",
         body: "家事が完了しました。 次回の期限は2026-07-11です。",
@@ -105,7 +93,6 @@ describe("notification service", () => {
 
   test("sends task completion notifications for each persisted completion event", async () => {
     const notificationRepository = new FakeNotificationRepository();
-    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
     notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
     const pushSender = new RecordingPushSender();
     const firstEvent = createCompletedEvent({ eventId: 601, taskId: 100 });
@@ -129,7 +116,6 @@ describe("notification service", () => {
 
   test("sends a notification job to every active subscription for the recipient", async () => {
     const notificationRepository = new FakeNotificationRepository();
-    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
     notificationRepository.subscriptionsByUserId.set(2, [
       createSubscription(10, 2),
       createSubscription(12, 2),
@@ -148,7 +134,6 @@ describe("notification service", () => {
 
   test("does not resend task completion notifications when the same persisted event is processed again", async () => {
     const notificationRepository = new FakeNotificationRepository();
-    notificationRepository.recipientsExceptActor = [{ id: 2, email: "receiver@example.com" }];
     notificationRepository.subscriptionsByUserId.set(2, [createSubscription(10, 2)]);
     const pushSender = new RecordingPushSender();
     const event = createCompletedEvent({ eventId: 701, taskId: 100 });
@@ -283,7 +268,6 @@ describe("notification service", () => {
 });
 
 class FakeNotificationRepository implements NotificationRepository {
-  recipientsExceptActor: NotificationRecipient[] = [];
   recipientsByAllowedEmail: NotificationRecipient[] = [];
   subscriptionsByUserId = new Map<number, PushSubscriptionRecord[]>();
   jobs: NotificationJob[] = [];
@@ -312,10 +296,6 @@ class FakeNotificationRepository implements NotificationRepository {
 
   async findUsersByEmails(): Promise<NotificationRecipient[]> {
     return this.recipientsByAllowedEmail;
-  }
-
-  async listUsersWithActiveSubscriptionsExcept(): Promise<NotificationRecipient[]> {
-    return this.recipientsExceptActor;
   }
 
   async listActiveSubscriptionsByUserId(userId: number): Promise<PushSubscriptionRecord[]> {

@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "kajibun Push通知機能 システム構成（メールフォールバック）",
+    "output": "docs/diagram-experiment/archify/architecture-email-fallback.html",
+    "viewBox": [1320, 650],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "subscription",
+        "label": "Push Subscription登録",
+        "focus": ["reactPwa", "worker", "d1", "pushService"],
+        "note": "VAPID公開鍵取得、PushManagerによるSubscription作成、Workerへの同期を追います。"
+      },
+      {
+        "id": "realtime",
+        "label": "家事完了Push通知",
+        "focus": ["reactPwa", "worker", "d1", "pushService", "pushSw"],
+        "note": "家事完了API内で通知ジョブを作成し、外部Push Serviceへ即時送信します。"
+      },
+      {
+        "id": "email-fallback",
+        "label": "メールフォールバック",
+        "focus": ["worker", "d1", "pushService", "emailService", "mailbox"],
+        "note": "Push通知が失敗した場合、WorkerがユーザーB宛てにメール通知を送信します。"
+      },
+      {
+        "id": "scheduled",
+        "label": "定期通知と再送",
+        "focus": ["cron", "worker", "d1", "pushService"],
+        "note": "Cronが期限通知作成とpending通知ジョブ再送を起動します。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "ユーザーのブラウザ/PWA",
+      "sublabel": "家事操作・通知許可",
+      "pos": [40, 300],
+      "size": [170, 70]
+    },
+    {
+      "id": "reactPwa",
+      "type": "frontend",
+      "label": "React PWA",
+      "sublabel": "通知設定UI・家事完了UI",
+      "tag": "Notifications API / Push API / PushManagerを利用",
+      "pos": [275, 175],
+      "size": [190, 90]
+    },
+    {
+      "id": "pushSw",
+      "type": "frontend",
+      "label": "push-sw.js",
+      "sublabel": "Push受信・通知表示",
+      "tag": "showNotification() / 通知クリックで画面復帰",
+      "pos": [275, 425],
+      "size": [190, 90]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Cloudflare Worker",
+      "sublabel": "kajibun API",
+      "tag": "家事処理・通知処理・Web Push送信・メールフォールバック",
+      "pos": [560, 300],
+      "size": [210, 95]
+    },
+    {
+      "id": "d1",
+      "type": "database",
+      "label": "Cloudflare D1",
+      "sublabel": "tasks / events / subscriptions / jobs",
+      "pos": [560, 535],
+      "size": [230, 80]
+    },
+    {
+      "id": "cron",
+      "type": "cloud",
+      "label": "Cloudflare Cron Trigger",
+      "sublabel": "0 3,9 * * *",
+      "pos": [560, 95],
+      "size": [210, 70]
+    },
+    {
+      "id": "pushService",
+      "type": "external",
+      "label": "外部Push Service",
+      "sublabel": "Subscription endpoint",
+      "tag": "具体的な事業者名は実装から特定しない",
+      "pos": [900, 225],
+      "size": [210, 90]
+    },
+    {
+      "id": "emailService",
+      "type": "external",
+      "label": "外部メール送信サービス",
+      "sublabel": "Push失敗時の通知経路",
+      "tag": "特定事業者名は図では固定しない",
+      "pos": [900, 455],
+      "size": [210, 90]
+    },
+    {
+      "id": "mailbox",
+      "type": "external",
+      "label": "ユーザーBの受信箱",
+      "sublabel": "メールアプリ / 受信箱",
+      "pos": [1160, 455],
+      "size": [150, 90]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "ユーザーのブラウザ/PWA実行環境",
+      "wraps": ["users", "reactPwa", "pushSw"],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "Cloudflare",
+      "wraps": ["worker", "d1", "cron"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "userToPwa",
+      "from": "users",
+      "to": "reactPwa",
+      "label": "家事完了操作 / 通知許可",
+      "variant": "emphasis",
+      "labelAt": [250, 294]
+    },
+    {
+      "id": "pwaToWorker",
+      "from": "reactPwa",
+      "to": "worker",
+      "label": "HTTPS API: VAPID取得・Subscription登録・家事完了",
+      "variant": "emphasis",
+      "labelAt": [515, 294]
+    },
+    {
+      "id": "pwaRegistersSw",
+      "from": "reactPwa",
+      "to": "pushSw",
+      "label": "register('/push-sw.js')",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [370, 362]
+    },
+    {
+      "id": "pushManagerSubscribe",
+      "from": "reactPwa",
+      "to": "pushService",
+      "label": "PushManager.subscribe(): endpoint / p256dh / auth",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [[370, 25], [1005, 25]],
+      "labelAt": [690, 17]
+    },
+    {
+      "id": "workerToD1",
+      "from": "worker",
+      "to": "d1",
+      "label": "SQL read/write",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "cronToWorker",
+      "from": "cron",
+      "to": "worker",
+      "label": "scheduled: 期限通知作成 + pending再送",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [665, 178]
+    },
+    {
+      "id": "workerToPush",
+      "from": "worker",
+      "to": "pushService",
+      "label": "暗号化POST + VAPID認証",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "pushToSw",
+      "from": "pushService",
+      "to": "pushSw",
+      "label": "Push message配送",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[1005, 75], [1315, 75], [1315, 646], [370, 646]],
+      "labelAt": [1160, 67]
+    },
+    {
+      "id": "workerToEmail",
+      "from": "worker",
+      "to": "emailService",
+      "label": "Push失敗時: メール送信依頼",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [835, 430]
+    },
+    {
+      "id": "emailToMailbox",
+      "from": "emailService",
+      "to": "mailbox",
+      "label": "ユーザーBへメール配送",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [1135, 451]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "通知種別",
+      "items": [
+        "task_completed: 家事完了時のリアルタイム通知",
+        "task_due_today: 期限当日・期限超過の定期通知",
+        "test_push: ログインユーザー自身へのテスト通知"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Workerの責務",
+      "items": [
+        "Tasks API、イベント保存、通知ジョブ作成、VAPID認証・暗号化、Push送信は同一Worker内の処理",
+        "家事完了通知はAPIリクエスト内でジョブ作成後に即時送信を試行",
+        "Push送信が失敗した場合、次担当者であるユーザーBへメール通知する"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "永続化データ",
+      "items": [
+        "D1はtasks、task_events、push_subscriptions、notification_jobsを保持",
+        "Subscriptionはendpoint、p256dh、authを保存",
+        "notification_jobsはpending / sent / failedとattemptsを管理"
+      ]
+    }
+  ]
+}

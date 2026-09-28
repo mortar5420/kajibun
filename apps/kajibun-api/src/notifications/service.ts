@@ -149,7 +149,7 @@ async function enqueueAndSendTaskCompletedNotifications(
     pushSender: PushSender;
   },
 ): Promise<void> {
-  const recipients = await options.notificationRepository.listUsersWithActiveSubscriptionsExcept(event.actorUserId);
+  const recipientUserId = event.payload.toAssigneeUserId;
   const nextDueDateMessage = event.payload.nextDueDate ? ` 次回の期限は${event.payload.nextDueDate}です。` : "";
   const payload: NotificationPayload = {
     title: `「${event.payload.title}」が完了しました`,
@@ -157,27 +157,15 @@ async function enqueueAndSendTaskCompletedNotifications(
     url: "/",
   };
 
-  for (const recipient of recipients) {
-    if (recipient.id === event.actorUserId) {
-      continue;
-    }
+  const job = await options.notificationRepository.createJob({
+    type: "task_completed",
+    recipientUserId,
+    taskId: event.taskId,
+    dedupeKey: ["task_completed", event.eventId, recipientUserId].join(":"),
+    payload,
+  });
 
-    const job = await options.notificationRepository.createJob({
-      type: "task_completed",
-      recipientUserId: recipient.id,
-      taskId: event.taskId,
-      dedupeKey: [
-        "task_completed",
-        event.eventId,
-        recipient.id,
-      ].join(":"),
-      payload,
-    });
-
-    if (job.status !== "pending") {
-      continue;
-    }
-
+  if (job.status === "pending") {
     await sendNotificationJob(options.notificationRepository, options.pushSender, job);
   }
 }

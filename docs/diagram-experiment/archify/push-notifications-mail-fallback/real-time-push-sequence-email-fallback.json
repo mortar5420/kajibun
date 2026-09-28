@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "家事完了時のリアルタイムPush通知（メールフォールバック）",
+    "output": "docs/diagram-experiment/archify/real-time-push-sequence-email-fallback.html",
+    "viewBox": [1420, 720],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "complete-request",
+        "label": "家事完了API",
+        "focus": ["userA", "pwaA", "worker", "d1"],
+        "note": "ユーザーAの完了操作から、tasks更新とTaskCompletedイベント保存まで。"
+      },
+      {
+        "id": "push-attempt",
+        "label": "Push送信試行",
+        "focus": ["worker", "d1", "pushService"],
+        "note": "同じAPIリクエスト内で通知ジョブを作成し、外部Push Serviceへの送信を試行します。"
+      },
+      {
+        "id": "email-fallback",
+        "label": "メールフォールバック",
+        "focus": ["worker", "d1", "emailService", "mailbox", "userB"],
+        "note": "Push通知が失敗した場合、ユーザーBへメール通知します。"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "userA",
+      "type": "external",
+      "label": "ユーザーA"
+    },
+    {
+      "id": "pwaA",
+      "type": "frontend",
+      "label": "ユーザーAのReact PWA"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Cloudflare Worker"
+    },
+    {
+      "id": "d1",
+      "type": "database",
+      "label": "Cloudflare D1"
+    },
+    {
+      "id": "pushService",
+      "type": "external",
+      "label": "外部Push Service"
+    },
+    {
+      "id": "emailService",
+      "type": "external",
+      "label": "メール送信Service"
+    },
+    {
+      "id": "mailbox",
+      "type": "external",
+      "label": "ユーザーBの受信箱"
+    },
+    {
+      "id": "userB",
+      "type": "external",
+      "label": "ユーザーB"
+    }
+  ],
+  "segments": [
+    {
+      "from": 160,
+      "to": 315,
+      "label": "家事完了処理"
+    },
+    {
+      "from": 330,
+      "to": 520,
+      "label": "Push送信試行"
+    },
+    {
+      "from": 535,
+      "to": 675,
+      "label": "メールフォールバック"
+    }
+  ],
+  "messages": [
+    {
+      "id": "tapComplete",
+      "from": "userA",
+      "to": "pwaA",
+      "y": 165,
+      "label": "「終わった」ボタン",
+      "variant": "default"
+    },
+    {
+      "id": "completeApi",
+      "from": "pwaA",
+      "to": "worker",
+      "y": 195,
+      "label": "PATCH /api/tasks/:taskId/complete (Cookie)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "loadTask",
+      "from": "worker",
+      "to": "d1",
+      "y": 225,
+      "label": "ユーザーA認証 + 対象家事取得",
+      "variant": "security"
+    },
+    {
+      "id": "taskLoaded",
+      "from": "d1",
+      "to": "worker",
+      "y": 253,
+      "label": "家事情報",
+      "variant": "return"
+    },
+    {
+      "id": "updateTask",
+      "from": "worker",
+      "to": "d1",
+      "y": 293,
+      "label": "tasksを次回期限・次担当者で更新",
+      "variant": "emphasis",
+      "note": "ユーザーBはTaskCompleted.payload.toAssigneeUserIdに記録される次担当者です。"
+    },
+    {
+      "id": "saveEvent",
+      "from": "worker",
+      "to": "d1",
+      "y": 325,
+      "label": "TaskCompletedイベント保存",
+      "variant": "emphasis"
+    },
+    {
+      "id": "eventSaved",
+      "from": "d1",
+      "to": "worker",
+      "y": 353,
+      "label": "eventId付きイベント",
+      "variant": "return"
+    },
+    {
+      "id": "createJob",
+      "from": "worker",
+      "to": "d1",
+      "y": 385,
+      "label": "notification_jobs作成 (recipient=toAssigneeUserId)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "jobPending",
+      "from": "d1",
+      "to": "worker",
+      "y": 413,
+      "label": "pending job",
+      "variant": "return"
+    },
+    {
+      "id": "postEndpoint",
+      "from": "worker",
+      "to": "pushService",
+      "y": 455,
+      "label": "VAPID認証 + 暗号化POST",
+      "variant": "security",
+      "note": "Content-Encoding: aes128gcm、TTL 60秒。具体的なPush Service事業者名は図では固定しません。"
+    },
+    {
+      "id": "pushFailed",
+      "from": "pushService",
+      "to": "worker",
+      "y": 485,
+      "label": "Push送信失敗",
+      "variant": "return",
+      "note": "Push endpointの失敗応答、送信例外、または有効Subscriptionなしをフォールバック契機として扱います。"
+    },
+    {
+      "id": "markFailure",
+      "from": "worker",
+      "to": "d1",
+      "y": 516,
+      "label": "Push失敗状態を記録",
+      "variant": "default"
+    },
+    {
+      "id": "sendEmail",
+      "from": "worker",
+      "to": "emailService",
+      "y": 552,
+      "label": "ユーザーB宛てメール送信",
+      "variant": "dashed",
+      "note": "メールはPush失敗時の代替通知です。家事完了後の次担当者以外には送信しません。"
+    },
+    {
+      "id": "emailAccepted",
+      "from": "emailService",
+      "to": "worker",
+      "y": 580,
+      "label": "送信受付",
+      "variant": "return"
+    },
+    {
+      "id": "deliverEmail",
+      "from": "emailService",
+      "to": "mailbox",
+      "y": 608,
+      "label": "メール配送",
+      "variant": "dashed"
+    },
+    {
+      "id": "notifyUserB",
+      "from": "mailbox",
+      "to": "userB",
+      "y": 626,
+      "label": "メール通知を表示",
+      "variant": "dashed"
+    },
+    {
+      "id": "apiResponse",
+      "from": "worker",
+      "to": "pwaA",
+      "y": 636,
+      "label": "更新後の家事を返す",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "pwaA",
+      "from": 188,
+      "to": 644,
+      "type": "frontend"
+    },
+    {
+      "participant": "worker",
+      "from": 195,
+      "to": 638,
+      "type": "backend"
+    },
+    {
+      "participant": "d1",
+      "from": 220,
+      "to": 524,
+      "type": "database"
+    },
+    {
+      "participant": "pushService",
+      "from": 450,
+      "to": 492,
+      "type": "external"
+    },
+    {
+      "participant": "emailService",
+      "from": 548,
+      "to": 614,
+      "type": "external"
+    },
+    {
+      "participant": "mailbox",
+      "from": 606,
+      "to": 634,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "宛先",
+      "items": [
+        "ユーザーBは家事完了後の次担当者です",
+        "Push通知とメール通知の宛先はTaskCompleted.payload.toAssigneeUserIdです",
+        "次担当者以外の購読ユーザーやメールアドレスには送信しません"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Push失敗時",
+      "items": [
+        "家事完了APIのリクエスト処理内でPush送信を試行します",
+        "Push送信が失敗した場合、Workerがメール通知へフォールバックします",
+        "Push失敗状態はD1の通知ジョブへ記録します"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "再送との関係",
+      "items": [
+        "再試行可能なPush失敗はpendingで残せます",
+        "後続のCron実行はpendingジョブを最大20件再送します",
+        "メールはPush失敗時にユーザーBへ到達させる代替経路です"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kajibun 家事完了時リアルタイムPush通知 シーケンス図</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5f6b7a;
+      --line: #6f7f91;
+      --pwa: #1f8a70;
+      --worker: #f58220;
+      --db: #7b4dbb;
+      --external: #8a5a44;
+      --sw: #3c6eaa;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .frame {
+      max-width: 1380px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid #d8dee7;
+      box-shadow: 0 16px 40px rgba(23, 32, 42, 0.08);
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: 750;
+      letter-spacing: 0;
+      fill: var(--ink);
+    }
+
+    .subtitle,
+    .note,
+    .small {
+      fill: var(--muted);
+    }
+
+    .subtitle {
+      font-size: 14px;
+    }
+
+    .actor {
+      fill: #ffffff;
+      stroke: #cbd3df;
+      stroke-width: 1.5;
+      rx: 8;
+    }
+
+    .actor-title {
+      font-size: 15px;
+      font-weight: 750;
+      fill: var(--ink);
+      text-anchor: middle;
+    }
+
+    .actor-subtitle {
+      font-size: 11px;
+      fill: var(--muted);
+      text-anchor: middle;
+    }
+
+    .lifeline {
+      stroke: #cbd3df;
+      stroke-width: 1.5;
+      stroke-dasharray: 7 7;
+    }
+
+    .activation {
+      fill: #f9fbfe;
+      stroke: #cbd3df;
+      stroke-width: 1.2;
+      rx: 4;
+    }
+
+    .worker-activation {
+      fill: #fff7ef;
+      stroke: #ffd1aa;
+    }
+
+    .db-activation {
+      fill: #f8f4ff;
+      stroke: #ddcff8;
+    }
+
+    .message {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 2;
+      marker-end: url(#arrow);
+    }
+
+    .return {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1.8;
+      stroke-dasharray: 7 6;
+      marker-end: url(#arrow);
+    }
+
+    .pwa-msg {
+      stroke: var(--pwa);
+      marker-end: url(#arrow-pwa);
+    }
+
+    .worker-msg {
+      stroke: var(--worker);
+      marker-end: url(#arrow-worker);
+    }
+
+    .db-msg {
+      stroke: var(--db);
+      marker-end: url(#arrow-db);
+    }
+
+    .external-msg {
+      stroke: var(--external);
+      marker-end: url(#arrow-external);
+    }
+
+    .sw-msg {
+      stroke: var(--sw);
+      marker-end: url(#arrow-sw);
+    }
+
+    .label {
+      font-size: 12px;
+      font-weight: 650;
+      fill: var(--ink);
+    }
+
+    .small {
+      font-size: 11px;
+    }
+
+    .step {
+      fill: #ffffff;
+      stroke: #d8dee7;
+      rx: 5;
+    }
+
+    .note-box {
+      fill: #fbfcfe;
+      stroke: #d8dee7;
+      stroke-width: 1.4;
+      rx: 8;
+    }
+
+    .note-title {
+      font-size: 14px;
+      font-weight: 750;
+      fill: var(--ink);
+    }
+
+    .note-body {
+      font-size: 12px;
+      fill: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <main class="frame" aria-label="家事完了時のリアルタイムPush通知シーケンス図">
+    <svg viewBox="0 0 1380 1060" role="img" aria-labelledby="diagram-title diagram-desc">
+      <title id="diagram-title">家事完了時のリアルタイムPush通知シーケンス図</title>
+      <desc id="diagram-desc">ユーザーAが家事を完了してから、次担当者であるユーザーBにPush通知が表示されるまでの順序。</desc>
+
+      <defs>
+        <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#6f7f91"></path>
+        </marker>
+        <marker id="arrow-pwa" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#1f8a70"></path>
+        </marker>
+        <marker id="arrow-worker" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#f58220"></path>
+        </marker>
+        <marker id="arrow-db" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#7b4dbb"></path>
+        </marker>
+        <marker id="arrow-external" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#8a5a44"></path>
+        </marker>
+        <marker id="arrow-sw" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#3c6eaa"></path>
+        </marker>
+      </defs>
+
+      <rect width="1380" height="1060" fill="#ffffff"></rect>
+      <text class="title" x="48" y="56">家事完了時のリアルタイムPush通知シーケンス図</text>
+      <text class="subtitle" x="48" y="82">ユーザーAが家事を完了すると、家事完了後の次担当者であるユーザーBにPush通知される</text>
+
+      <g id="actors">
+        <rect class="actor" x="48" y="122" width="132" height="68"></rect>
+        <text class="actor-title" x="114" y="151">ユーザーA</text>
+        <text class="actor-subtitle" x="114" y="171">家事を完了</text>
+
+        <rect class="actor" x="232" y="122" width="156" height="68"></rect>
+        <text class="actor-title" x="310" y="151">ユーザーAのPWA</text>
+        <text class="actor-subtitle" x="310" y="171">React PWA</text>
+
+        <rect class="actor" x="458" y="122" width="196" height="68"></rect>
+        <text class="actor-title" x="556" y="151">Cloudflare Worker</text>
+        <text class="actor-subtitle" x="556" y="171">kajibun API</text>
+
+        <rect class="actor" x="732" y="122" width="132" height="68"></rect>
+        <text class="actor-title" x="798" y="151">D1</text>
+        <text class="actor-subtitle" x="798" y="171">永続化</text>
+
+        <rect class="actor" x="936" y="122" width="170" height="68"></rect>
+        <text class="actor-title" x="1021" y="151">外部Push Service</text>
+        <text class="actor-subtitle" x="1021" y="171">endpoint</text>
+
+        <rect class="actor" x="1172" y="122" width="156" height="68"></rect>
+        <text class="actor-title" x="1250" y="151">ユーザーBのSW</text>
+        <text class="actor-subtitle" x="1250" y="171">push-sw.js</text>
+
+        <rect class="actor" x="1184" y="884" width="132" height="68"></rect>
+        <text class="actor-title" x="1250" y="913">ユーザーB</text>
+        <text class="actor-subtitle" x="1250" y="933">次担当者</text>
+      </g>
+
+      <line class="lifeline" x1="114" y1="190" x2="114" y2="960"></line>
+      <line class="lifeline" x1="310" y1="190" x2="310" y2="960"></line>
+      <line class="lifeline" x1="556" y1="190" x2="556" y2="960"></line>
+      <line class="lifeline" x1="798" y1="190" x2="798" y2="960"></line>
+      <line class="lifeline" x1="1021" y1="190" x2="1021" y2="960"></line>
+      <line class="lifeline" x1="1250" y1="190" x2="1250" y2="884"></line>
+      <line class="lifeline" x1="1250" y1="952" x2="1250" y2="960"></line>
+
+      <rect class="activation" x="304" y="230" width="12" height="640"></rect>
+      <rect class="activation worker-activation" x="550" y="282" width="12" height="546"></rect>
+      <rect class="activation db-activation" x="792" y="354" width="12" height="252"></rect>
+      <rect class="activation" x="1015" y="696" width="12" height="82"></rect>
+      <rect class="activation" x="1244" y="778" width="12" height="116"></rect>
+
+      <path class="message pwa-msg" d="M114 238 L304 238"></path>
+      <rect class="step" x="136" y="212" width="154" height="24"></rect>
+      <text class="label" x="146" y="229">1. 「終わった」ボタン</text>
+
+      <path class="message pwa-msg" d="M316 292 L550 292"></path>
+      <rect class="step" x="342" y="262" width="182" height="42"></rect>
+      <text class="label" x="354" y="280">2. PATCH</text>
+      <text class="small" x="354" y="297">/api/tasks/:taskId/complete</text>
+
+      <path class="message worker-msg" d="M562 342 C640 342 640 314 562 314"></path>
+      <rect class="step" x="586" y="312" width="216" height="50"></rect>
+      <text class="label" x="598" y="331">3. セッションCookieで認証</text>
+      <text class="small" x="598" y="349">ユーザーAを特定</text>
+
+      <path class="message db-msg" d="M562 382 L792 382"></path>
+      <rect class="step" x="594" y="356" width="164" height="24"></rect>
+      <text class="label" x="606" y="373">4. 対象家事を取得</text>
+
+      <path class="return db-msg" d="M792 420 L562 420"></path>
+      <rect class="step" x="604" y="426" width="142" height="24"></rect>
+      <text class="label" x="616" y="443">Taskを返す</text>
+
+      <path class="message worker-msg" d="M562 476 C668 476 668 448 562 448"></path>
+      <rect class="step" x="594" y="454" width="238" height="52"></rect>
+      <text class="label" x="606" y="473">5. 次回期限・次担当者を決定</text>
+      <text class="small" x="606" y="491">ユーザーB = 完了後の次担当者</text>
+
+      <path class="message db-msg" d="M562 536 L792 536"></path>
+      <rect class="step" x="604" y="510" width="154" height="24"></rect>
+      <text class="label" x="616" y="527">6. tasksを更新</text>
+
+      <path class="message db-msg" d="M562 590 L792 590"></path>
+      <rect class="step" x="584" y="562" width="196" height="42"></rect>
+      <text class="label" x="596" y="580">7. TaskCompleted保存</text>
+      <text class="small" x="596" y="597">eventIdをD1で採番</text>
+
+      <path class="return db-msg" d="M792 636 L562 636"></path>
+      <rect class="step" x="594" y="642" width="206" height="24"></rect>
+      <text class="label" x="606" y="659">保存済みイベントを返す</text>
+
+      <path class="message worker-msg" d="M562 684 C690 684 690 654 562 654"></path>
+      <rect class="step" x="584" y="672" width="256" height="50"></rect>
+      <text class="label" x="596" y="691">8. toAssigneeUserIdを通知先にする</text>
+      <text class="small" x="596" y="709">task_completed:{eventId}:{recipientUserId}</text>
+
+      <path class="message db-msg" d="M562 748 L792 748"></path>
+      <rect class="step" x="590" y="724" width="222" height="42"></rect>
+      <text class="label" x="602" y="742">9. notification_jobs作成</text>
+      <text class="small" x="602" y="759">status = pending</text>
+
+      <path class="message worker-msg" d="M562 808 C690 808 690 774 562 774"></path>
+      <rect class="step" x="584" y="790" width="222" height="50"></rect>
+      <text class="label" x="596" y="809">10. 同じAPI処理内で即時送信</text>
+      <text class="small" x="596" y="827">VAPID JWT生成・payload暗号化</text>
+
+      <path class="message external-msg" d="M562 860 C738 880 852 706 1015 706"></path>
+      <rect class="step" x="742" y="768" width="220" height="50"></rect>
+      <text class="label" x="754" y="787">11. Subscription endpointへPOST</text>
+      <text class="small" x="754" y="805">Authorization: vapid / aes128gcm</text>
+
+      <path class="return external-msg" d="M1015 748 C858 746 720 858 562 846"></path>
+      <rect class="step" x="766" y="836" width="182" height="42"></rect>
+      <text class="label" x="778" y="854">12. 成功応答なら</text>
+      <text class="small" x="778" y="871">ジョブをsentに更新</text>
+
+      <path class="message external-msg" d="M1027 778 L1244 778"></path>
+      <rect class="step" x="1062" y="752" width="148" height="24"></rect>
+      <text class="label" x="1074" y="769">13. Push message配送</text>
+
+      <path class="message sw-msg" d="M1256 820 C1330 820 1330 792 1256 792"></path>
+      <rect class="step" x="1108" y="804" width="224" height="50"></rect>
+      <text class="label" x="1120" y="823">14. pushイベント受信</text>
+      <text class="small" x="1120" y="841">{ title, body, url: "/" }</text>
+
+      <path class="message sw-msg" d="M1250 868 L1250 884"></path>
+      <rect class="step" x="1078" y="860" width="158" height="24"></rect>
+      <text class="label" x="1090" y="877">15. showNotification()</text>
+
+      <path class="return pwa-msg" d="M550 922 L316 922"></path>
+      <rect class="step" x="356" y="892" width="154" height="42"></rect>
+      <text class="label" x="368" y="910">16. 更新後の家事を返す</text>
+      <text class="small" x="368" y="927">通知処理後にAPI応答</text>
+
+      <rect class="note-box" x="48" y="980" width="1280" height="52"></rect>
+      <text class="note-title" x="72" y="1005">実装上の注意</text>
+      <text class="note-body" x="188" y="1005">Push送信は家事完了API内で即時試行される。再試行可能な失敗はD1のnotification_jobsにpendingで残り、Cron実行で最大20件ずつ再送される。</text>
+      <text class="note-body" x="188" y="1025">外部Push Serviceの具体的な事業者名や内部配送経路は、実装からは特定しない。</text>
+    </svg>
+  </main>
+</body>
+</html>

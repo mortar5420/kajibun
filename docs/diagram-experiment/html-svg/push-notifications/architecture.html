@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kajibun Push通知機能 システム構成図</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5f6b7a;
+      --line: #6f7f91;
+      --cloudflare: #f58220;
+      --pwa: #1f8a70;
+      --browser: #3c6eaa;
+      --db: #7b4dbb;
+      --external: #8a5a44;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .frame {
+      max-width: 1280px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid #d8dee7;
+      box-shadow: 0 16px 40px rgba(23, 32, 42, 0.08);
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: 750;
+      letter-spacing: 0;
+      fill: var(--ink);
+    }
+
+    .subtitle,
+    .note,
+    .small {
+      fill: var(--muted);
+    }
+
+    .subtitle {
+      font-size: 14px;
+    }
+
+    .node-title {
+      font-size: 18px;
+      font-weight: 750;
+      fill: var(--ink);
+    }
+
+    .node-subtitle {
+      font-size: 13px;
+      fill: var(--muted);
+    }
+
+    .body {
+      font-size: 13px;
+      fill: var(--ink);
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .label {
+      font-size: 12px;
+      font-weight: 650;
+      fill: var(--ink);
+    }
+
+    .box {
+      fill: #ffffff;
+      stroke: #cbd3df;
+      stroke-width: 1.5;
+      rx: 8;
+    }
+
+    .group {
+      fill: #fbfcfe;
+      stroke: #d8dee7;
+      stroke-width: 1.5;
+      rx: 8;
+    }
+
+    .browser-group {
+      fill: #f3f8ff;
+      stroke: #c9dbf2;
+    }
+
+    .worker-group {
+      fill: #fff7ef;
+      stroke: #ffd1aa;
+    }
+
+    .db-group {
+      fill: #f8f4ff;
+      stroke: #ddcff8;
+    }
+
+    .external-group {
+      fill: #fff8f4;
+      stroke: #e8cdbd;
+    }
+
+    .pill {
+      fill: #eef3f8;
+      stroke: #d1dae5;
+      rx: 14;
+    }
+
+    .arrow {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 2;
+      marker-end: url(#arrow);
+    }
+
+    .arrow-strong {
+      stroke-width: 2.4;
+    }
+
+    .arrow-pwa {
+      stroke: var(--pwa);
+      marker-end: url(#arrow-pwa);
+    }
+
+    .arrow-worker {
+      stroke: var(--cloudflare);
+      marker-end: url(#arrow-worker);
+    }
+
+    .arrow-db {
+      stroke: var(--db);
+      marker-end: url(#arrow-db);
+    }
+
+    .arrow-external {
+      stroke: var(--external);
+      marker-end: url(#arrow-external);
+    }
+
+    .dash {
+      stroke-dasharray: 7 6;
+    }
+
+    .badge {
+      fill: #ffffff;
+      stroke: #cbd3df;
+      rx: 6;
+    }
+
+    .legend-line {
+      stroke-width: 2.4;
+      fill: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="frame" aria-label="kajibun Push通知機能 システム構成図">
+    <svg viewBox="0 0 1280 900" role="img" aria-labelledby="diagram-title diagram-desc">
+      <title id="diagram-title">kajibun Push通知機能 システム構成図</title>
+      <desc id="diagram-desc">React PWA、push-sw.js、Cloudflare Worker、D1、Cron Trigger、外部Push Serviceの関係を示す構成図。</desc>
+
+      <defs>
+        <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#6f7f91"></path>
+        </marker>
+        <marker id="arrow-pwa" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#1f8a70"></path>
+        </marker>
+        <marker id="arrow-worker" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#f58220"></path>
+        </marker>
+        <marker id="arrow-db" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#7b4dbb"></path>
+        </marker>
+        <marker id="arrow-external" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+          <path d="M0,0 L10,5.5 L0,11 Z" fill="#8a5a44"></path>
+        </marker>
+      </defs>
+
+      <rect width="1280" height="900" fill="#ffffff"></rect>
+
+      <text class="title" x="48" y="56">Push通知機能全体のシステム構成図</text>
+      <text class="subtitle" x="48" y="82">実行環境・デプロイ単位を基本粒度にし、Worker内部の責務分割は1コンポーネントへ統合</text>
+
+      <rect class="group browser-group" x="48" y="122" width="380" height="600"></rect>
+      <text class="node-title" x="72" y="158">ユーザーのブラウザ / PWA</text>
+      <text class="node-subtitle" x="72" y="180">ユーザー操作、通知許可、Push受信の実行環境</text>
+
+      <rect class="box" x="76" y="210" width="324" height="188"></rect>
+      <text class="node-title" x="100" y="244">React PWA</text>
+      <text class="body" x="100" y="276">・家事完了操作</text>
+      <text class="body" x="100" y="300">・通知設定UI</text>
+      <text class="body" x="100" y="324">・VAPID公開鍵取得</text>
+      <text class="body" x="100" y="348">・Subscription作成・同期</text>
+      <text class="small" x="100" y="374">利用ブラウザ機能: Notifications API / Push API</text>
+
+      <rect class="box" x="76" y="434" width="324" height="162"></rect>
+      <text class="node-title" x="100" y="468">push-sw.js</text>
+      <text class="node-subtitle" x="100" y="492">Service Worker 実行コンテキスト</text>
+      <text class="body" x="100" y="524">・push イベント受信</text>
+      <text class="body" x="100" y="548">・showNotification()</text>
+      <text class="body" x="100" y="572">・通知クリック時に画面をfocus / open</text>
+
+      <path class="arrow arrow-pwa" d="M238 398 L238 432"></path>
+      <rect class="badge" x="126" y="404" width="224" height="24"></rect>
+      <text class="label" x="142" y="421">/push-sw.js を登録</text>
+
+      <rect class="group worker-group" x="500" y="156" width="340" height="394"></rect>
+      <text class="node-title" x="528" y="194">Cloudflare Worker</text>
+      <text class="node-subtitle" x="528" y="216">kajibun API</text>
+      <text class="body" x="528" y="258">・Hono API</text>
+      <text class="body" x="528" y="282">・家事完了処理</text>
+      <text class="body" x="528" y="306">・イベント保存と通知処理</text>
+      <text class="body" x="528" y="330">・通知ジョブ作成 / 再試行</text>
+      <text class="body" x="528" y="354">・VAPID JWT生成</text>
+      <text class="body" x="528" y="378">・Web Cryptoによるpayload暗号化</text>
+      <text class="body" x="528" y="402">・Subscription endpointへPOST</text>
+      <rect class="pill" x="528" y="430" width="262" height="30"></rect>
+      <text class="small" x="544" y="450">VAPID: public key / private key / subject</text>
+      <rect class="pill" x="528" y="470" width="282" height="30"></rect>
+      <text class="small" x="544" y="490">通知種別: task_completed / due_today / test_push</text>
+
+      <rect class="group db-group" x="914" y="156" width="300" height="258"></rect>
+      <text class="node-title" x="942" y="194">Cloudflare D1</text>
+      <text class="node-subtitle" x="942" y="216">永続化データ</text>
+      <text class="body" x="942" y="258">・tasks</text>
+      <text class="body" x="942" y="282">・task_events</text>
+      <text class="body" x="942" y="306">・push_subscriptions</text>
+      <text class="body" x="942" y="330">・notification_jobs</text>
+      <text class="small" x="942" y="368">status: pending / sent / failed</text>
+
+      <rect class="group external-group" x="914" y="500" width="300" height="166"></rect>
+      <text class="node-title" x="942" y="538">外部Push Service</text>
+      <text class="node-subtitle" x="942" y="560">ブラウザベンダーのPush Service</text>
+      <text class="body" x="942" y="598">・Subscription固有のendpoint</text>
+      <text class="body" x="942" y="622">・暗号化されたPush messageを配送</text>
+      <text class="small" x="942" y="646">具体的な事業者名は実装から特定しない</text>
+
+      <rect class="box" x="500" y="620" width="340" height="102"></rect>
+      <text class="node-title" x="528" y="658">Cloudflare Cron Trigger</text>
+      <text class="body" x="528" y="690">0 3,9 * * * でWorkerの定期処理を起動</text>
+
+      <path class="arrow arrow-pwa arrow-strong" d="M400 260 C442 260 456 248 498 248"></path>
+      <rect class="badge" x="286" y="218" width="112" height="48"></rect>
+      <text class="label" x="300" y="238">HTTPS API</text>
+      <text class="small" x="300" y="256">家事操作など</text>
+
+      <path class="arrow arrow-pwa" d="M400 330 C444 330 456 332 498 332"></path>
+      <rect class="badge" x="278" y="338" width="120" height="48"></rect>
+      <text class="label" x="292" y="358">Push設定API</text>
+      <text class="small" x="292" y="376">VAPID / 購読登録</text>
+
+      <path class="arrow arrow-db arrow-strong" d="M840 280 C872 280 880 280 912 280"></path>
+      <rect class="badge" x="824" y="292" width="118" height="30"></rect>
+      <text class="label" x="838" y="312">SQL read/write</text>
+
+      <path class="arrow arrow-worker arrow-strong" d="M670 620 L670 552"></path>
+      <rect class="badge" x="696" y="578" width="126" height="30"></rect>
+      <text class="label" x="710" y="598">scheduled()</text>
+
+      <path class="arrow arrow-external arrow-strong" d="M840 390 C878 424 876 540 912 574"></path>
+      <rect class="badge" x="736" y="512" width="198" height="48"></rect>
+      <text class="label" x="750" y="532">暗号化POST</text>
+      <text class="small" x="750" y="550">Authorization: vapid / TTL 60秒</text>
+
+      <path class="arrow arrow-external arrow-strong" d="M914 606 C720 770 414 622 400 548"></path>
+      <rect class="badge" x="530" y="704" width="214" height="48"></rect>
+      <text class="label" x="544" y="724">Push message配送</text>
+      <text class="small" x="544" y="742">Service Workerのpushイベントへ</text>
+
+      <path class="arrow arrow-pwa dash" d="M238 596 L238 650"></path>
+      <rect class="badge" x="102" y="636" width="272" height="34"></rect>
+      <text class="label" x="118" y="658">ブラウザ / OS がユーザーへ通知表示</text>
+
+      <rect class="group" x="48" y="762" width="1166" height="86"></rect>
+      <text class="node-title" x="72" y="796">図の読み方</text>
+      <text class="body" x="72" y="824">Tasks API、Task Service、Event Dispatcher、Notification Service、Web Push Adapter、Scheduled Handlerは同一Worker内の実装責務であり、独立コンポーネントとしては描かない。</text>
+
+      <line class="legend-line" x1="760" y1="794" x2="814" y2="794" stroke="#1f8a70" marker-end="url(#arrow-pwa)"></line>
+      <text class="small" x="824" y="799">PWAとWorker API</text>
+      <line class="legend-line" x1="760" y1="824" x2="814" y2="824" stroke="#7b4dbb" marker-end="url(#arrow-db)"></line>
+      <text class="small" x="824" y="829">D1永続化</text>
+      <line class="legend-line" x1="990" y1="794" x2="1044" y2="794" stroke="#8a5a44" marker-end="url(#arrow-external)"></line>
+      <text class="small" x="1054" y="799">Web Push配送</text>
+      <line class="legend-line" x1="990" y1="824" x2="1044" y2="824" stroke="#f58220" marker-end="url(#arrow-worker)"></line>
+      <text class="small" x="1054" y="829">Cron起動</text>
+    </svg>
+  </main>
+</body>
+</html>

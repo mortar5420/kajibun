@@ -36,7 +36,6 @@ export interface NotificationRepository {
     userAgent: string | null;
   }): Promise<void>;
   findUsersByEmails(emails: string[]): Promise<NotificationRecipient[]>;
-  listUsersWithActiveSubscriptionsExcept(userId: number): Promise<NotificationRecipient[]>;
   listActiveSubscriptionsByUserId(userId: number): Promise<PushSubscriptionRecord[]>;
   revokeSubscription(subscriptionId: number): Promise<void>;
   createJob(input: {
@@ -94,19 +93,6 @@ export function createSqlNotificationRepository(db: SqlClient): NotificationRepo
         WHERE lower(email) IN (${placeholders})
         `,
         normalizedEmails,
-      );
-    },
-
-    async listUsersWithActiveSubscriptionsExcept(userId: number): Promise<NotificationRecipient[]> {
-      return db.all<NotificationRecipient>(
-        `
-        SELECT DISTINCT users.id, users.email
-        FROM users
-        INNER JOIN push_subscriptions ON push_subscriptions.user_id = users.id
-        WHERE users.id <> ? AND push_subscriptions.revoked_at IS NULL
-        ORDER BY users.id ASC
-        `,
-        [userId],
       );
     },
 

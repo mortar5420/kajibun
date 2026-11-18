@@ -12,6 +12,7 @@ export type Task = {
   assigneePictureUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  version: number;
 };
 
 export type TaskDetails = {

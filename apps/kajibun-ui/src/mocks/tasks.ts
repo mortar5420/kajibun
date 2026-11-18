@@ -15,6 +15,7 @@ export const mockTasks: Task[] = [
     assigneePictureUrl: null,
     createdAt: today,
     updatedAt: today,
+    version: 0,
   },
   {
     id: '2',
@@ -27,6 +28,7 @@ export const mockTasks: Task[] = [
     assigneePictureUrl: null,
     createdAt: today,
     updatedAt: today,
+    version: 0,
   },
   {
     id: '3',
@@ -39,5 +41,6 @@ export const mockTasks: Task[] = [
     assigneePictureUrl: null,
     createdAt: today,
     updatedAt: today,
+    version: 0,
   },
 ];

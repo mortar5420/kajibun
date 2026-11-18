@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { AppProviders } from './app/providers';
 import { AppShell } from './app/AppShell';
+import type { Screen } from './app/AppShell';
+import { MonthlyCompletions } from './features/completions/components/MonthlyCompletions';
 import { TaskAdmin } from './components/TaskAdmin';
 import { TaskList } from './components/TaskList';
 import {
@@ -13,8 +15,6 @@ import {
 } from './features/profile/api';
 import type { ProfileSubmitInput } from './features/profile/model/profileForm';
 import { StatusMessage } from './shared/ui/StatusMessage';
-
-type Screen = 'today' | 'admin';
 
 function AppContent() {
   const queryClient = useQueryClient();
@@ -34,6 +34,7 @@ function AppContent() {
     onSuccess: () => {
       queryClient.setQueryData(['currentUser'], null);
       queryClient.removeQueries({ queryKey: ['tasks'] });
+      queryClient.removeQueries({ queryKey: ['completions'] });
     },
   });
   const profileMutation = useMutation({
@@ -51,6 +52,7 @@ function AppContent() {
     onSuccess: (updatedUser) => {
       queryClient.setQueryData(['currentUser'], updatedUser);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['completions'] });
       setIsProfileDialogOpen(false);
     },
   });
@@ -83,7 +85,9 @@ function AppContent() {
       {!isLoading && !currentUser ? (
         <StatusMessage>許可された Google アカウントでログインしてください。</StatusMessage>
       ) : null}
-      {currentUser ? screen === 'today' ? <TaskList currentUser={currentUser} /> : <TaskAdmin /> : null}
+      {currentUser && screen === 'today' ? <TaskList currentUser={currentUser} /> : null}
+      {currentUser && screen === 'admin' ? <TaskAdmin /> : null}
+      {currentUser && screen === 'completions' ? <MonthlyCompletions /> : null}
     </AppShell>
   );
 }

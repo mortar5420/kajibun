@@ -46,9 +46,10 @@ export async function reassignTask(taskId: string, assigneeUserId: string | null
   return data.task;
 }
 
-export async function completeTask(taskId: string): Promise<Task> {
+export async function completeTask(taskId: string, version: number): Promise<Task> {
   const data = await request<{ task: Task }>(`/tasks/${taskId}/complete`, {
     method: 'PATCH',
+    body: JSON.stringify({ version }),
   });
 
   return data.task;

@@ -23,6 +23,7 @@ export function toTask(row: TaskRow): Task {
           }) ?? null),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    version: row.version,
   };
 }
 
@@ -38,5 +39,6 @@ export function toTaskResponse(task: Task): TaskResponse {
     assigneePictureUrl: task.assigneePictureUrl,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
+    version: task.version,
   };
 }

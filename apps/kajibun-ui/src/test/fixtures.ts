@@ -19,6 +19,7 @@ export function createTaskFixture(input: Partial<Task> & Pick<Task, 'id' | 'titl
     assigneePictureUrl: null,
     createdAt: '2026-07-10T00:00:00.000Z',
     updatedAt: '2026-07-10T00:00:00.000Z',
+    version: 0,
     ...input,
   };
 }

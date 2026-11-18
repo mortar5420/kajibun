@@ -16,6 +16,7 @@ import {
 } from "./service";
 import { parseCreateTaskInput, parseUpdateTaskInput } from "./validation";
 import type { TaskInput } from "./types";
+import { httpError } from "../shared/errors";
 
 export const tasksRoutes = new Hono<AppHonoContext>();
 
@@ -102,7 +103,11 @@ tasksRoutes.patch("/:taskId/complete", async (c) => {
   });
   const actor = await requireCurrentUser(c, db);
   const taskId = Number(c.req.param("taskId"));
-  const updatedTask = await completeTaskUseCase(taskRepository, c.env.ALLOWED_GOOGLE_EMAILS, actor, taskId, {
+  const body = await readJson<{ version?: unknown }>(c);
+  if (!Number.isSafeInteger(body.version) || typeof body.version !== "number" || body.version < 0) {
+    throw httpError("invalid_task_version", "Task version must be a non-negative integer", 400);
+  }
+  const updatedTask = await completeTaskUseCase(taskRepository, c.env.ALLOWED_GOOGLE_EMAILS, actor, taskId, body.version, {
     eventHandlers: [
       (event) =>
         handleTaskNotificationEvent(event, {

@@ -26,7 +26,15 @@ export function createD1Client(db: D1Database): SqlClient {
 
       return {
         lastRowId: result.meta.last_row_id,
+        changes: result.meta.changes,
       };
+    },
+
+    async batch(statements) {
+      const results = await db.batch(
+        statements.map(({ sql, params = [] }) => db.prepare(sql).bind(...params)),
+      );
+      return results.map((result) => ({ lastRowId: result.meta.last_row_id, changes: result.meta.changes }));
     },
   };
 }

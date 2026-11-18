@@ -12,6 +12,7 @@ export type TaskRow = {
   assignee_avatar_updated_at: string | null;
   created_at: string;
   updated_at: string;
+  version: number;
 };
 
 export type UserLookup = {
@@ -37,4 +38,5 @@ export type TaskResponse = {
   assigneePictureUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  version: number;
 };

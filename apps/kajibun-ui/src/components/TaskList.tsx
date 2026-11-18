@@ -37,15 +37,17 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
     },
   });
   const completeMutation = useMutation({
-    mutationFn: ({ taskId }: { taskId: string }) => completeTask(taskId),
+    mutationFn: ({ taskId, version }: { taskId: string; version: number }) => completeTask(taskId, version),
     onSuccess: (updatedTask) => {
       updateTaskCache(queryClient, updatedTask);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['completions'] });
       setCrackerEffect((current) => ({
         taskId: updatedTask.id,
         key: (current?.key ?? 0) + 1,
       }));
     },
+    onError: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
 
   const currentUserId = String(currentUser.id);
@@ -104,6 +106,11 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
       </div>
 
       {filteredTasks.length === 0 ? <StatusMessage>表示するかじがありません。</StatusMessage> : null}
+      {completeMutation.isError || reassignMutation.isError ? (
+        <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          {completeMutation.error?.message ?? reassignMutation.error?.message ?? '家事を更新できませんでした。'}
+        </p>
+      ) : null}
 
       <div className="grid gap-4">
         {filteredTasks.map((task) => {
@@ -156,7 +163,7 @@ export const TaskList = ({ currentUser }: TaskListProps) => {
                 {isAssignedToMe ? (
                   <button
                     type="button"
-                    onClick={() => completeMutation.mutate({ taskId: task.id })}
+                    onClick={() => completeMutation.mutate({ taskId: task.id, version: task.version })}
                     disabled={isMutating}
                     className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-60"
                   >

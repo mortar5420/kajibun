@@ -47,6 +47,7 @@ export type TaskDomainEvent =
       payload: {
         fromUserId: number | null;
         toUserId: number | null;
+        dueDate: string | null;
       };
     }
   | {
@@ -54,6 +55,7 @@ export type TaskDomainEvent =
       taskId: number;
       actorUserId: number;
       payload: {
+        completionId: string;
         title: string;
         fromAssigneeUserId: number | null;
         toAssigneeUserId: number;

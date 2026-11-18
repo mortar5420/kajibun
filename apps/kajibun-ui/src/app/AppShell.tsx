@@ -7,7 +7,7 @@ import { PushNotificationButton } from '../features/push-notifications/component
 import type { User } from '../types/user';
 import logoUrl from '../assets/logo.png';
 
-type Screen = 'today' | 'admin';
+export type Screen = 'today' | 'admin' | 'completions';
 
 type AppShellProps = {
   currentUser: User | null | undefined;
@@ -89,7 +89,7 @@ export function AppShell({
         ) : null}
 
         {currentUser ? (
-          <nav className="mb-5 flex gap-2">
+          <nav className="mb-5 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => onScreenChange('today')}
@@ -103,6 +103,13 @@ export function AppShell({
               className={screen === 'admin' ? activeTabClassName : inactiveTabClassName}
             >
               かじ管理
+            </button>
+            <button
+              type="button"
+              onClick={() => onScreenChange('completions')}
+              className={screen === 'completions' ? activeTabClassName : inactiveTabClassName}
+            >
+              実施記録
             </button>
           </nav>
         ) : null}

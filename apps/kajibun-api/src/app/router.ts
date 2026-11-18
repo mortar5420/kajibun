@@ -4,6 +4,7 @@ import { corsPreflightResponse, withCors } from "../shared/cors";
 import { isHttpError, jsonError } from "../shared/errors";
 import { registerNotificationRoutes } from "../notifications/routes";
 import { tasksRoutes } from "../tasks/routes";
+import { completionsRoutes } from "../completions/routes";
 import type { AppHonoContext } from "./context";
 import type { Env } from "./env";
 
@@ -49,6 +50,8 @@ registerNotificationRoutes(app, "/api");
 
 app.route("/tasks", tasksRoutes);
 app.route("/api/tasks", tasksRoutes);
+app.route("/completions", completionsRoutes);
+app.route("/api/completions", completionsRoutes);
 
 app.get("/api", (c) => defaultApiResponse(c.env));
 app.all("/api/*", (c) => defaultApiResponse(c.env));
@@ -84,6 +87,8 @@ function isApiPath(pathname: string): boolean {
     pathname === "/health" ||
     pathname === "/me" ||
     pathname === "/tasks" ||
+    pathname === "/completions" ||
+    pathname.startsWith("/completions/") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/users/") ||
     pathname.startsWith("/notifications/") ||

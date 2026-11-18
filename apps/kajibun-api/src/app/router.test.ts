@@ -102,6 +102,13 @@ describe("handleRequest", () => {
     });
   });
 
+  test("protects monthly completion reports with and without the /api prefix", async () => {
+    for (const path of ["/completions?month=2026-11", "/api/completions?month=2026-11"]) {
+      const response = await handleRequest(new Request(`https://api.example.test${path}`), createTestEnv());
+      expect(response.status).toBe(401);
+    }
+  });
+
   test("keeps public push routes available with and without the /api prefix", async () => {
     const env = createTestEnv({
       VAPID_PUBLIC_KEY: "test-vapid-key",

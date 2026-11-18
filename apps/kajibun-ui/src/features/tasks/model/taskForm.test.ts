@@ -49,6 +49,7 @@ describe('task form model', () => {
         assigneePictureUrl: null,
         createdAt: '2026-07-10T00:00:00.000Z',
         updatedAt: '2026-07-10T00:00:00.000Z',
+        version: 0,
       } satisfies Task),
     ).toEqual({
       title: '洗濯',

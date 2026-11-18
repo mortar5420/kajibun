@@ -93,6 +93,7 @@ describe('TaskList', () => {
       assignee: '自分',
       assigneeUserId: currentUser.id,
       assigneePictureUrl: currentUser.pictureUrl ?? null,
+      version: 1,
     };
     const completedTask = {
       ...assignedTask,
@@ -108,7 +109,8 @@ describe('TaskList', () => {
         tasks = [assignedTask];
         return HttpResponse.json({ task: assignedTask });
       }),
-      http.patch('/api/tasks/1/complete', async () => {
+      http.patch('/api/tasks/1/complete', async ({ request }) => {
+        expect(await request.json()).toEqual({ version: assignedTask.version });
         tasks = [completedTask];
         return HttpResponse.json({ task: completedTask });
       }),
@@ -127,6 +129,27 @@ describe('TaskList', () => {
     const cracker = document.querySelector('.cracker-burst');
     expect(cracker).toBeInTheDocument();
     expect(cracker?.closest('article')).toContainElement(screen.getByRole('heading', { name: '未担当のかじ' }));
+  });
+
+  test('shows a conflict and refreshes the task without retrying completion', async () => {
+    const user = userEvent.setup();
+    let completed = false;
+    let attempts = 0;
+    const task = createTaskFixture({ id: '1', title: '掃除', assigneeUserId: currentUser.id, version: 4 });
+    server.use(
+      http.get('/api/tasks', () => HttpResponse.json({ tasks: [completed ? { ...task, assigneeUserId: '2', version: 5 } : task] })),
+      http.patch('/api/tasks/1/complete', async ({ request }) => {
+        expect(await request.json()).toEqual({ version: 4 });
+        attempts++;
+        completed = true;
+        return HttpResponse.json({ error: { code: 'task_conflict', message: '家事が更新されています。' } }, { status: 409 });
+      }),
+    );
+    renderWithProviders(<TaskList currentUser={currentUser} />);
+    await user.click(await screen.findByRole('button', { name: '終わった' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('家事が更新されています。');
+    expect(await screen.findByRole('button', { name: '自分が担当する' })).toBeInTheDocument();
+    expect(attempts).toBe(1);
   });
 });
 

@@ -67,6 +67,7 @@ describe("notification service", () => {
       taskId: 100,
       actorUserId: 1,
       payload: {
+        completionId: "completion-501",
         title: "トイレ掃除",
         fromAssigneeUserId: 1,
         toAssigneeUserId: 2,
@@ -382,13 +383,9 @@ class FakeTaskRepository implements TaskRepository {
     return 1;
   }
 
-  async updateDetails(): Promise<void> {}
+  async saveChange(): Promise<number> { return 1; }
 
-  async markDeleted(): Promise<void> {}
-
-  async updateAssignee(): Promise<void> {}
-
-  async updateCompletion(): Promise<void> {}
+  async listCurrentReassignments(): Promise<[]> { return []; }
 
   async findUserById(): Promise<null> {
     return null;
@@ -430,6 +427,7 @@ function createTask(input: Pick<Task, "id" | "title" | "dueDate">): Task {
     assigneePictureUrl: null,
     createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
+    version: 0,
   };
 }
 
@@ -440,6 +438,7 @@ function createCompletedEvent(input: { eventId: number; taskId: number }): Persi
     taskId: input.taskId,
     actorUserId: 1,
     payload: {
+      completionId: `completion-${input.eventId}`,
       title: "トイレ掃除",
       fromAssigneeUserId: 1,
       toAssigneeUserId: 2,

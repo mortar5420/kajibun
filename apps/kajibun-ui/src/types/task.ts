@@ -9,4 +9,5 @@ export interface Task {
   assigneePictureUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  version: number;
 }

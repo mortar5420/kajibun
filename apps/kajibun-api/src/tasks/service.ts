@@ -3,6 +3,8 @@ import { isAllowedEmail, parseAllowedEmails } from "../auth/policy";
 import { getTodayDateString } from "../shared/date";
 import { httpError } from "../shared/errors";
 import { applyTaskDetails, completeTask } from "./domain";
+import { classifyCompletion } from "./completion";
+import type { TaskDomainEvent } from "./events";
 import { dispatchTaskEvents } from "./event-handlers";
 import type { TaskEventHandler } from "./event-handlers";
 import type { TaskRepository } from "./repository";
@@ -56,23 +58,20 @@ export async function updateTaskUseCase(
   const task = await getExistingTask(repository, taskId);
   const next = applyTaskDetails(task, input);
 
-  await repository.updateDetails(taskId, next);
-  await dispatchTaskEvents(repository, [
-    {
-      type: "TaskUpdated",
-      taskId,
-      actorUserId: actor.id,
-      payload: {
-        from: {
-          title: task.title,
-          description: task.description,
-          dueDate: task.dueDate,
-          intervalDays: task.intervalDays,
-        },
-        to: next,
+  await repository.saveChange(task, { type: "details", input: next }, {
+    type: "TaskUpdated",
+    taskId,
+    actorUserId: actor.id,
+    payload: {
+      from: {
+        title: task.title,
+        description: task.description,
+        dueDate: task.dueDate,
+        intervalDays: task.intervalDays,
       },
+      to: next,
     },
-  ]);
+  });
 
   return getExistingTask(repository, taskId);
 }
@@ -80,22 +79,18 @@ export async function updateTaskUseCase(
 export async function deleteTaskUseCase(repository: TaskRepository, actor: CurrentUser, taskId: number): Promise<void> {
   const task = await getExistingTask(repository, taskId);
 
-  await dispatchTaskEvents(repository, [
-    {
-      type: "TaskDeleted",
-      taskId,
-      actorUserId: actor.id,
-      payload: {
-        title: task.title,
-        description: task.description,
-        dueDate: task.dueDate,
-        intervalDays: task.intervalDays,
-        assigneeUserId: task.assigneeUserId,
-      },
+  await repository.saveChange(task, { type: "delete" }, {
+    type: "TaskDeleted",
+    taskId,
+    actorUserId: actor.id,
+    payload: {
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      intervalDays: task.intervalDays,
+      assigneeUserId: task.assigneeUserId,
     },
-  ]);
-
-  await repository.markDeleted(taskId);
+  });
 }
 
 export async function reassignTaskUseCase(
@@ -108,18 +103,17 @@ export async function reassignTaskUseCase(
   const assignee = await resolveAssignee(repository, allowedEmailsConfig, input);
   const task = await getExistingTask(repository, taskId);
 
-  await repository.updateAssignee(taskId, assignee?.id ?? null);
-  await dispatchTaskEvents(repository, [
-    {
-      type: "TaskReassigned",
-      taskId,
-      actorUserId: actor.id,
-      payload: {
-        fromUserId: task.assigneeUserId,
-        toUserId: assignee?.id ?? null,
-      },
+  if (task.assigneeUserId === (assignee?.id ?? null)) return task;
+  await repository.saveChange(task, { type: "assignee", assigneeUserId: assignee?.id ?? null }, {
+    type: "TaskReassigned",
+    taskId,
+    actorUserId: actor.id,
+    payload: {
+      fromUserId: task.assigneeUserId,
+      toUserId: assignee?.id ?? null,
+      dueDate: task.dueDate,
     },
-  ]);
+  });
 
   return getExistingTask(repository, taskId);
 }
@@ -129,30 +123,46 @@ export async function completeTaskUseCase(
   allowedEmailsConfig: string | undefined,
   actor: CurrentUser,
   taskId: number,
+  expectedVersion: number,
   options: TaskUseCaseOptions = {},
 ): Promise<Task> {
   const task = await getExistingTask(repository, taskId);
+  if (task.version !== expectedVersion) {
+    throw httpError("task_conflict", "家事が更新されています。一覧を更新してから操作してください。", 409);
+  }
+  if (task.assigneeUserId !== actor.id) {
+    throw httpError("not_task_assignee", "自分が担当している家事だけ完了できます。", 403);
+  }
   const nextAssignee = await resolveNextAssignee(repository, allowedEmailsConfig, actor.id);
-  const completion = completeTask(task, getTodayDateString(), nextAssignee.id);
-
-  await repository.updateCompletion(taskId, completion);
-  await dispatchTaskEvents(
-    repository,
-    [
-      {
-        type: "TaskCompleted",
-        taskId,
-        actorUserId: actor.id,
-        payload: {
-          title: task.title,
-          fromAssigneeUserId: task.assigneeUserId,
-          toAssigneeUserId: nextAssignee.id,
-          nextDueDate: completion.nextDueDate,
-        },
-      },
-    ],
-    options.eventHandlers,
-  );
+  const performedAt = new Date().toISOString();
+  const completion = completeTask(task, getTodayDateString(new Date(performedAt)), nextAssignee.id);
+  const history = await repository.listCurrentReassignments(taskId);
+  const record = {
+    id: crypto.randomUUID(),
+    taskId,
+    performedByUserId: actor.id,
+    performedAt,
+    taskTitleSnapshot: task.title,
+    dueDateSnapshot: task.dueDate,
+    ...classifyCompletion(history, actor.id),
+  };
+  const event: TaskDomainEvent = {
+    type: "TaskCompleted",
+    taskId,
+    actorUserId: actor.id,
+    payload: {
+      completionId: record.id,
+      title: task.title,
+      fromAssigneeUserId: task.assigneeUserId,
+      toAssigneeUserId: nextAssignee.id,
+      nextDueDate: completion.nextDueDate,
+    },
+  };
+  const eventId = await repository.saveChange(task, { type: "complete", update: completion, record }, event);
+  // Notify only after the task, completion record, and event have committed.
+  for (const handler of options.eventHandlers ?? []) {
+    await handler({ ...event, eventId });
+  }
 
   return getExistingTask(repository, taskId);
 }
